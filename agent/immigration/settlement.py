@@ -17,6 +17,7 @@ from immigration.task_generator import (
     extract_service_locations,
     calculate_plan_duration
 )
+from immigration.smart_task_generator import generate_smart_tasks
 from immigration.extended_task_generator import (
     generate_extended_tasks,
     merge_and_optimize_tasks
@@ -498,8 +499,9 @@ async def settlement_node(state: AgentState, config: RunnableConfig):
         # Calculate plan duration
         plan_duration = calculate_plan_duration(customer_info)
         
-        # Phase 1: Generate core tasks with geocoding
-        core_tasks = await generate_all_tasks_async(customer_info)
+        # Phase 1: Generate smart tasks based on conversation
+        # Use LLM to analyze user's conversation and generate personalized tasks
+        core_tasks = await generate_smart_tasks(state["messages"], customer_info)
         
         # Phase 2: Generate extended (AI-suggested) tasks around core tasks
         extended_tasks = await generate_extended_tasks(core_tasks, customer_info, max_per_task=2)
