@@ -7,17 +7,17 @@ load_dotenv()
 from fastapi import FastAPI
 import uvicorn
 from copilotkit.integrations.fastapi import add_fastapi_endpoint
-from copilotkit import CopilotKitRemoteEndpoint, LangGraphAgent
+from copilotkit import CopilotKitRemoteEndpoint, LangGraphAGUIAgent
 from immigration.agent import graph
 
 
 app = FastAPI()
 sdk = CopilotKitRemoteEndpoint(
     agents=[
-        LangGraphAgent(
+        LangGraphAGUIAgent(
             name="immigration",
             description="Helps new immigrants settle into Hong Kong by creating personalized settlement plans.",
-            agent=graph,
+            graph=graph,
         )
     ],
 )

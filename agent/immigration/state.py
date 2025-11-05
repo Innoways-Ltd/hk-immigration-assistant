@@ -1,5 +1,12 @@
 from typing import Literal, TypedDict, List, Optional
 from langgraph.graph import MessagesState
+from enum import Enum
+
+class TaskType(str, Enum):
+    """Task type classification."""
+    CORE = "core"           # Core/essential activities
+    EXTENDED = "extended"   # Extended/suggested activities
+    OPTIONAL = "optional"   # Optional activities
 
 class ServiceLocation(TypedDict):
     """A service location (bank, government office, mobile shop, etc.)."""
@@ -32,6 +39,10 @@ class SettlementTask(TypedDict):
     description: str
     day_range: str  # e.g., "Day 1-3", "Day 3-7"
     priority: Literal["high", "medium", "low"]
+    task_type: str  # "core", "extended", "optional"
+    core_activity_id: Optional[str]  # ID of the core activity this extends
+    relevance_score: Optional[float]  # Relevance score (0-1) for extended activities
+    recommendation_reason: Optional[str]  # Why this activity is recommended
     location: Optional[ServiceLocation]
     documents_needed: List[str]
     estimated_duration: str  # e.g., "1-2 hours"
@@ -81,3 +92,4 @@ class AgentState(MessagesState):
     selected_task_id: Optional[str]
     search_progress: List[SearchProgress]
     planning_progress: List[PlanningProgress]
+    info_confirmed: bool  # Whether customer has confirmed their information

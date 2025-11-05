@@ -33,6 +33,9 @@ export type SettlementTask = {
   estimated_duration: string;
   status: "pending" | "in_progress" | "completed";
   dependencies: string[];
+  task_type?: "core" | "extended";  // Task type: core (essential) or extended (AI-suggested)
+  recommendation_reason?: string;    // Why this extended task is recommended
+  related_core_task?: string;        // ID of the related core task (for extended tasks)
 };
 
 export type CustomerInfo = {

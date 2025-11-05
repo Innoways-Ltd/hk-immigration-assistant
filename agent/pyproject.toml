@@ -21,7 +21,8 @@ dependencies = [
     "uvicorn",
     "copilotkit==0.1.54",
     "googlemaps",
-    "html2text"
+    "html2text",
+    "aiohttp (>=3.13.2,<4.0.0)"
 ]
 
 [tool.poetry.dependencies]

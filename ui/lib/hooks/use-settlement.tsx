@@ -1,14 +1,21 @@
 import { SearchProgress } from "@/components/SearchProgress";
 import { useCoAgent, useCoAgentStateRender } from "@copilotkit/react-core";
 import { useCopilotChatSuggestions } from "@copilotkit/react-ui";
-import { createContext, useContext, ReactNode, useMemo } from "react";
-import { SettlementPlan, SettlementTask, AgentState } from "@/lib/types";
+import { createContext, useContext, ReactNode, useMemo, useState, useCallback } from "react";
+import { SettlementPlan, SettlementTask, AgentState, ServiceLocation } from "@/lib/types";
 
 type SettlementContextType = {
   settlementPlan: SettlementPlan | null;
   selectedTaskId: string | null;
   selectedTask?: SettlementTask | null;
   customerInfo: any;
+  hoveredDay: number | null;
+  hoveredTaskId: string | null;
+  setHoveredDay: (day: number | null) => void;
+  setHoveredTaskId: (taskId: string | null) => void;
+  focusedLocations: ServiceLocation[];
+  completedTasks: Set<string>;
+  toggleTaskCompletion: (taskId: string) => void;
 };
 
 const SettlementContext = createContext<SettlementContextType | undefined>(undefined);
@@ -22,6 +29,13 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
       selected_task_id: null,
     },
   });
+
+  // Map interaction states
+  const [hoveredDay, setHoveredDay] = useState<number | null>(null);
+  const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
+  
+  // Task completion state
+  const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
 
   useCoAgentStateRender<AgentState>({
     name: "immigration",
@@ -44,12 +58,70 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
     return state.settlement_plan.tasks?.find((task: SettlementTask) => task.id === state.selected_task_id);
   }, [state.settlement_plan, state.selected_task_id]);
 
+  // Calculate focused locations based on hovered day or task
+  const focusedLocations = useMemo(() => {
+    if (!state.settlement_plan) return [];
+
+    // If hovering on a specific task, show only that task's location
+    if (hoveredTaskId) {
+      const task = state.settlement_plan.tasks?.find((t: SettlementTask) => t.id === hoveredTaskId);
+      if (task && task.location) {
+        return [task.location];
+      }
+      return [];
+    }
+
+    // If hovering on a day, show all locations for tasks on that day
+    if (hoveredDay !== null) {
+      console.log('[DEBUG] Hovering on day:', hoveredDay);
+      const tasksOnDay = state.settlement_plan.tasks?.filter((task: SettlementTask) => {
+        // Parse day_range which can be "Day 1", "Day 1 (Jul 10)", or "Day 1-3 (Jul 10 - Jul 12)"
+        const dayMatch = task.day_range.match(/Day (\d+)/);
+        if (!dayMatch) return false;
+        const taskDay = parseInt(dayMatch[1]);
+        const matches = taskDay === hoveredDay;
+        console.log(`[DEBUG] Task "${task.title}" day_range="${task.day_range}" taskDay=${taskDay} matches=${matches}`);
+        return matches;
+      }) || [];
+      console.log('[DEBUG] Tasks on day:', tasksOnDay.length);
+
+      const locations = tasksOnDay
+        .map((task: SettlementTask) => task.location)
+        .filter((loc): loc is ServiceLocation => loc !== null && loc !== undefined);
+
+      return locations;
+    }
+
+    // Default: show all locations
+    return state.settlement_plan.service_locations || [];
+  }, [state.settlement_plan, hoveredDay, hoveredTaskId]);
+
+  // Toggle task completion
+  const toggleTaskCompletion = useCallback((taskId: string) => {
+    setCompletedTasks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
+      }
+      return newSet;
+    });
+  }, []);
+
   return (
     <SettlementContext.Provider value={{ 
       settlementPlan: state.settlement_plan || null,
       selectedTaskId: state.selected_task_id || null,
       selectedTask,
       customerInfo: state.customer_info || {},
+      hoveredDay,
+      hoveredTaskId,
+      setHoveredDay,
+      setHoveredTaskId,
+      focusedLocations,
+      completedTasks,
+      toggleTaskCompletion,
     }}>
       {children}
     </SettlementContext.Provider>
