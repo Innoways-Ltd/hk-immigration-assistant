@@ -261,17 +261,6 @@ The customer has confirmed their information.
    - If they need location recommendations, use search_service_locations or search_properties
 6. **Maintain conversational tone** - you're their helpful guide, not a robot
 
-**Example after plan creation:**
-"I've created your settlement plan with essential tasks! Here are the highlights:
-
-📍 **Day 1**: Airport pickup, check-in, and getting your transportation card and SIM card
-🏠 **Days 3-5**: Property viewings in your preferred areas
-🏦 **Day 7**: Opening your bank account
-📋 **Day 10**: Applying for your resident identity card
-
-The plan is optimized based on your temporary accommodation duration. You can see all tasks on the left, and click on any task to see it highlighted on the map.
-
-Would you like me to explain any specific task in detail, or would you like to make any adjustments?"
 """
     
     messages = [SystemMessage(content=system_message)] + state["messages"]
