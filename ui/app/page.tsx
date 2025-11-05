@@ -62,14 +62,23 @@ export default function Home() {
           : "https://api.cloud.copilotkit.ai/copilotkit/v1"
       }
       publicApiKey={process.env.NEXT_PUBLIC_CPK_PUBLIC_API_KEY}
+      // 增加流式响应的超时时间
+      runtimeOptions={{
+        timeout: 300000, // 5 minutes
+        headers: {
+          'X-Accel-Buffering': 'no', // 禁用缓冲
+        }
+      }}
     >
       <CopilotSidebar
         defaultOpen={false}
         clickOutsideToClose={false}
+        // 增加聊天组件的超时设置
+        timeout={300000} // 5 minutes
         labels={{
           title: "Immigration Settlement Assistant",
           initial:
-            "Hi! 👋 I'm your immigration settlement assistant. I'll help you create a personalized settlement plan tailored to your destination and timeline.\n\nPlease share your details in one message (or we can chat step by step):\n- Your name\n- Destination country/city\n- Arrival date\n- Office address\n- Housing needs (budget, bedrooms, preferred areas)\n- Family situation\n- Temporary accommodation needs (how many days)",
+            "Hi! 👋 I'm your immigration settlement assistant. I'll help you create a personalized settlement plan tailored to your destination and timeline.\n\nPlease share your details in one message (or we can chat step by step):\n- Your name\n- Destination country/city\n- Arrival date\n- Office address\n- Housing needs (budget, bedrooms, preferred areas)\n- Family situation\n- Temporary accommodation needs (how many days)\n\nOnce you provide your information, I'll create a detailed settlement plan with specific tasks, locations, and timelines!",
         }}
       >
         <MainContent />

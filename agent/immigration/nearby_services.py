@@ -1,11 +1,9 @@
 """
-Nearby Services Search and Relevance Scoring
+Nearby Services Search and Relevance Scoring using Google Places API
 """
-from typing import List, Dict, Optional, Tuple
+from typing import List, Optional, Tuple
 from .state import ServiceLocation, SettlementTask, CustomerInfo
-from .overpass_service import search_nearby_pois_overpass
-import aiohttp
-import asyncio
+from .overpass_service import search_nearby_pois_cached
 import math
 
 
@@ -47,7 +45,7 @@ async def search_nearby_services(
     categories: Optional[List[str]] = None
 ) -> List[ServiceLocation]:
     """
-    Search for nearby services around a core task location using Overpass API.
+    Search for nearby services around a core task location using Google Places API.
     
     Args:
         core_task: The core task to search around
@@ -67,13 +65,15 @@ async def search_nearby_services(
         # Determine categories based on task title/description
         categories = _infer_relevant_categories(core_task)
     
-    # Use Overpass API for POI search
+    # Use POI search with caching and fallback
     radius_m = int(radius_km * 1000)  # Convert km to meters
-    services = await search_nearby_pois_overpass(
+    services = await search_nearby_pois_cached(
         lat, lon,
         radius_m=radius_m,
         service_types=categories,
-        limit=5  # Limit per category
+        limit=5,  # Limit per category
+        use_cache=True,  # Enable caching to reduce API calls
+        use_fallback=True  # Use predefined data when API fails
     )
     
     # Convert to our ServiceLocation format
