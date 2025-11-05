@@ -538,9 +538,15 @@ async def settlement_node(state: AgentState, config: RunnableConfig):
         
         await copilotkit_emit_state(config, state)
         
+        # Add ToolMessage for the tool call
         state["messages"].append(ToolMessage(
             tool_call_id=tool_call["id"],
             content=f"Created {plan_duration}-day settlement plan with {len(optimized_tasks)} tasks for {customer_name}"
+        ))
+        
+        # Add AIMessage with the plan summary for user visibility
+        state["messages"].append(AIMessage(
+            content=plan_summary
         ))
     
     state["planning_progress"] = []
