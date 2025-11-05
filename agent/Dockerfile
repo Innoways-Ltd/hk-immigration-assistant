@@ -1,5 +1,5 @@
 # Multi-stage build for HK Immigration Assistant Agent
-FROM python:3.11-slim as builder
+FROM python:3.12-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN pip install --no-cache-dir poetry==1.7.1
+# Install Poetry (latest version)
+RUN pip install --no-cache-dir poetry
 
 # Copy poetry files
 COPY pyproject.toml poetry.lock ./
@@ -21,11 +21,12 @@ COPY pyproject.toml poetry.lock ./
 # Configure poetry to not create virtual environment
 RUN poetry config virtualenvs.create false
 
-# Install dependencies
-RUN poetry install --no-dev --no-interaction --no-ansi
+# Install dependencies (skip installing current project, regenerate lock if needed)
+RUN poetry install --only main --no-root --no-interaction --no-ansi || \
+    (poetry lock && poetry install --only main --no-root --no-interaction --no-ansi)
 
 # Production stage
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
@@ -36,7 +37,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
