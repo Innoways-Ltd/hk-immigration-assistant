@@ -115,12 +115,27 @@ def _generate_housing_core_tasks(
     """Generate core housing search tasks"""
     tasks = []
     
-    # Start housing search on Day 3 (after settling in)
-    start_day = 3
-    if arrival_date:
+    # Check if user has preferred date for home viewing
+    preferred_dates = customer_info.get("preferred_dates", {})
+    preferred_home_viewing = preferred_dates.get("home_viewing") if preferred_dates else None
+    
+    # Use preferred date if available, otherwise default to Day 3
+    if preferred_home_viewing and arrival_date:
+        try:
+            search_date = datetime.strptime(preferred_home_viewing, "%Y-%m-%d")
+            start_day = (search_date - arrival_date).days + 1
+            day_str = f"Day {start_day} ({search_date.strftime('%b %d')})"
+        except:
+            # Fallback to default if date parsing fails
+            start_day = 3
+            search_date = arrival_date + timedelta(days=start_day - 1)
+            day_str = f"Day {start_day} ({search_date.strftime('%b %d')})"
+    elif arrival_date:
+        start_day = 3
         search_date = arrival_date + timedelta(days=start_day - 1)
         day_str = f"Day {start_day} ({search_date.strftime('%b %d')})"
     else:
+        start_day = 3
         day_str = f"Day {start_day}"
     
     budget = customer_info.get("housing_budget", 0)
@@ -181,11 +196,27 @@ def _generate_identity_core_tasks(
     })
     
     # Bank account - Day 10 (essential for salary and daily life)
-    bank_day = 10
-    if arrival_date:
+    # Check if user has preferred date for bank account opening
+    preferred_dates = customer_info.get("preferred_dates", {})
+    preferred_bank_account = preferred_dates.get("bank_account") if preferred_dates else None
+    
+    # Use preferred date if available, otherwise default to Day 10
+    if preferred_bank_account and arrival_date:
+        try:
+            bank_date = datetime.strptime(preferred_bank_account, "%Y-%m-%d")
+            bank_day = (bank_date - arrival_date).days + 1
+            day_str = f"Day {bank_day} ({bank_date.strftime('%b %d')})"
+        except:
+            # Fallback to default if date parsing fails
+            bank_day = 10
+            bank_date = arrival_date + timedelta(days=bank_day - 1)
+            day_str = f"Day {bank_day} ({bank_date.strftime('%b %d')})"
+    elif arrival_date:
+        bank_day = 10
         bank_date = arrival_date + timedelta(days=bank_day - 1)
         day_str = f"Day {bank_day} ({bank_date.strftime('%b %d')})"
     else:
+        bank_day = 10
         day_str = f"Day {bank_day}"
     
     tasks.append({

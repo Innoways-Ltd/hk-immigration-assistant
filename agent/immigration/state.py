@@ -1,4 +1,4 @@
-from typing import Literal, TypedDict, List, Optional
+from typing import TypedDict, List, Optional, Literal, Dict
 from langgraph.graph import MessagesState
 from enum import Enum
 
@@ -64,6 +64,7 @@ class CustomerInfo(TypedDict):
     has_children: bool
     needs_car: bool
     temporary_accommodation_days: Optional[int]
+    preferred_dates: Optional[Dict[str, str]]  # Task-specific preferred dates, e.g., {"home_viewing": "2025-05-09", "bank_account": "2025-05-10"}
 
 class SettlementPlan(TypedDict, total=False):
     """The complete settlement plan."""

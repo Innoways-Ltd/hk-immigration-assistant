@@ -304,15 +304,75 @@ class RoutingService:
                                 "durations": durations   # 2D array in seconds
                             }
                         else:
-                            logger.warning(f"Google Distance Matrix API error: {data.get('status', 'Unknown error')}")
+                            logger.warning(f"Google Distance Matrix API error: {data.get('status', 'Unknown error')}, using Euclidean distance fallback")
+                            return self._calculate_euclidean_distance_matrix(coordinates)
                     else:
-                        logger.warning(f"Google Distance Matrix API HTTP error: {response.status}")
+                        logger.warning(f"Google Distance Matrix API HTTP error: {response.status}, using Euclidean distance fallback")
+                        return self._calculate_euclidean_distance_matrix(coordinates)
 
-            return None
+            logger.warning("Google Distance Matrix API failed, using Euclidean distance fallback")
+            return self._calculate_euclidean_distance_matrix(coordinates)
 
         except Exception as e:
-            logger.error(f"Error getting distance matrix: {e}")
-            return None
+            logger.warning(f"Error getting distance matrix from Google API: {e}, using Euclidean distance fallback")
+            return self._calculate_euclidean_distance_matrix(coordinates)
+    
+    def _calculate_euclidean_distance_matrix(
+        self,
+        coordinates: List[Tuple[float, float]]
+    ) -> Dict[str, Any]:
+        """
+        Calculate distance matrix using Euclidean distance (straight-line distance).
+        This is a fallback when Google Distance Matrix API is not available.
+        
+        Args:
+            coordinates: List of (longitude, latitude) tuples
+        
+        Returns:
+            Dictionary with distance and duration matrices
+        """
+        import math
+        
+        n = len(coordinates)
+        distances = [[0.0 for _ in range(n)] for _ in range(n)]
+        durations = [[0.0 for _ in range(n)] for _ in range(n)]
+        
+        # Approximate walking speed: 5 km/h = 1.39 m/s
+        walking_speed_mps = 1.39
+        
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    distances[i][j] = 0
+                    durations[i][j] = 0
+                else:
+                    # Calculate Euclidean distance using Haversine formula
+                    lon1, lat1 = coordinates[i]
+                    lon2, lat2 = coordinates[j]
+                    
+                    # Convert to radians
+                    lat1_rad = math.radians(lat1)
+                    lat2_rad = math.radians(lat2)
+                    dlon = math.radians(lon2 - lon1)
+                    dlat = math.radians(lat2 - lat1)
+                    
+                    # Haversine formula
+                    a = math.sin(dlat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon/2)**2
+                    c = 2 * math.asin(math.sqrt(a))
+                    
+                    # Earth radius in meters
+                    earth_radius_m = 6371000
+                    distance_m = earth_radius_m * c
+                    
+                    distances[i][j] = distance_m
+                    # Estimate duration based on walking speed
+                    durations[i][j] = distance_m / walking_speed_mps
+        
+        logger.info(f"Calculated Euclidean distance matrix for {n} coordinates")
+        return {
+            "distances": distances,
+            "durations": durations
+        }
 
 
 # Singleton instance

@@ -345,44 +345,21 @@ async def search_nearby_pois_cached(
         if cached_result:
             return cached_result
 
-    # Try Google Places API calls
-    all_pois = []
-    consecutive_failures = 0
-    max_consecutive_failures = 3
-
-    for service_type in service_types:
-        try:
-            # Use Google Places API for each service type
-            pois = _google_places_nearby_search(lat, lon, service_type, radius_m, limit)
-
-            if pois:
-                all_pois.extend(pois)
-                consecutive_failures = 0
-            else:
-                consecutive_failures += 1
-
-            # Rate limiting between service types
-            import asyncio
-            await asyncio.sleep(0.5)
-
-            # If too many consecutive failures, break
-            if consecutive_failures >= max_consecutive_failures:
-                logger.warning(f"Too many consecutive failures ({consecutive_failures}), stopping API calls")
-                break
-
-        except Exception as e:
-            logger.error(f"Error searching for {service_type}: {e}")
-            consecutive_failures += 1
-            continue
-
-    # If we got some results from Google Places API, cache and return them
-    if all_pois:
-        if use_cache:
-            _cache_pois(cache_key, all_pois)
-        return all_pois
-
-    # If Google Places API failed completely, use fallback predefined data
-    logger.warning("Google Places API calls failed, using fallback data")
+    # Try Overpass API first (primary source)
+    logger.info(f"Searching POIs using Overpass API for {service_types}")
+    try:
+        all_pois = await search_nearby_pois_overpass(lat, lon, radius_m, service_types, limit)
+        
+        if all_pois:
+            logger.info(f"Found {len(all_pois)} POIs from Overpass API")
+            if use_cache:
+                _cache_pois(cache_key, all_pois)
+            return all_pois
+    except Exception as e:
+        logger.warning(f"Overpass API failed: {e}")
+    
+    # If Overpass API failed, use fallback predefined data
+    logger.warning("Overpass API failed, using fallback predefined data")
     if use_fallback:
         fallback_pois = _get_nearest_predefined_pois(lat, lon, service_types, limit * len(service_types))
 

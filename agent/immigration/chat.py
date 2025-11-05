@@ -23,11 +23,18 @@ def save_customer_info(
     family_size: int = None,
     has_children: bool = False,
     needs_car: bool = False,
-    temporary_accommodation_days: int = None
+    temporary_accommodation_days: int = None,
+    preferred_dates: dict = None
 ):
     """
     Save customer information collected from the conversation.
     Call this tool whenever you learn new information about the customer.
+    
+    Args:
+        preferred_dates: Dictionary of task-specific preferred dates.
+            Keys should be task types (e.g., "home_viewing", "bank_account", "identity_card").
+            Values should be dates in YYYY-MM-DD format.
+            Example: {"home_viewing": "2025-05-09", "bank_account": "2025-05-10"}
     """
     return "Customer information saved"
 
@@ -145,6 +152,8 @@ Your role is to help new immigrants settle smoothly by understanding their needs
 - Family situation (size, children, pets)
 - Transportation needs (car or public transport)
 - **Temporary accommodation days** (CRITICAL: how many days they need temporary housing)
+- **Preferred dates for specific tasks** (IMPORTANT: if user mentions specific dates for activities like home viewing, bank account opening, etc., capture them in preferred_dates field)
+  Example: {{"home_viewing": "2025-05-09", "bank_account": "2025-05-10"}}
 
 **Current Customer Information:**
 {json.dumps(customer_info, indent=2) if customer_info else "No information collected yet"}
