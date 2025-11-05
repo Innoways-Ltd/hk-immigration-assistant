@@ -52,6 +52,8 @@ class SettlementTask(TypedDict):
 class CustomerInfo(TypedDict):
     """Customer information."""
     name: Optional[str]
+    destination_country: Optional[str]  # Target country for immigration
+    destination_city: Optional[str]  # Target city for immigration
     arrival_date: Optional[str]
     office_address: Optional[str]
     office_coordinates: Optional[tuple]  # (lat, lng)

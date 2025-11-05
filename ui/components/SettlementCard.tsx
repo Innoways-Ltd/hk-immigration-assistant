@@ -155,7 +155,7 @@ ${task.location ? `Location: ${task.location.name} - ${task.location.address}` :
       }).join('\n\n---\n\n');
 
       const subject = `${customerInfo.name || 'Your'} Settlement Plan - Selected Tasks`;
-      const body = `Hi ${customerInfo.name || 'there'},\n\nHere are your selected settlement tasks:\n\n${emailContent}\n\nBest regards,\nHK Immigration Assistant`;
+      const body = `Hi ${customerInfo.name || 'there'},\n\nHere are your selected settlement tasks:\n\n${emailContent}\n\nBest regards,\nImmigration Settlement Assistant`;
 
       // Create mailto link
       const mailtoLink = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -229,7 +229,6 @@ ${task.location ? `Location: ${task.location.name} - ${task.location.address}` :
               key={day} 
               className="space-y-3"
               onMouseEnter={() => setHoveredDay(day)}
-              onMouseLeave={() => setHoveredDay(null)}
             >
               {/* Day Header */}
               <div className="flex items-center gap-2 pb-2 border-b">
@@ -250,7 +249,6 @@ ${task.location ? `Location: ${task.location.name} - ${task.location.address}` :
                       key={task.id}
                       className="group p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
                       onMouseEnter={() => setHoveredTaskId(task.id)}
-                      onMouseLeave={() => setHoveredTaskId(null)}
                       onClick={() => toggleTaskCompletion(task.id)}
                     >
                       <div className="flex items-start gap-3">

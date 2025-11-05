@@ -122,6 +122,7 @@ async def generate_plan_summary(plan: SettlementPlan, customer_info: CustomerInf
         api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
         temperature=0.7,
         max_tokens=800,
+        streaming=True,
     )
     
     # Prepare task summary
@@ -129,37 +130,50 @@ async def generate_plan_summary(plan: SettlementPlan, customer_info: CustomerInf
     for task in plan["tasks"][:10]:  # First 10 tasks
         task_summary_parts.append(f"- {task.get('title')}: {task.get('day_range')}")
     
+    # Build detailed task list with exact dates from the plan
+    all_tasks_with_dates = []
+    for task in plan["tasks"]:
+        all_tasks_with_dates.append(
+            f"- {task.get('title')}: {task.get('day_range')} (优先级: {task.get('priority', 'medium')})"
+        )
+    
     summary_prompt = f"""
-基于以下最终确定的安家计划，生成一段自然、友好的中文摘要。
+基于以下**最终确定**的安家计划，生成一段自然、友好的中文摘要。
+
+**重要提示：摘要中提到的所有日期必须与下面列出的任务日期完全一致，不要自行推算或修改日期。**
 
 **客户信息：**
 - 姓名: {plan.get('customer_name', '客户')}
 - 到达日期: {arrival_date_str or '待定'}
 - 临时住宿天数: {temp_days}天
 
-**关键任务日期（已优化后的最终日期）：**
-{chr(10).join([f"- {k}: {v}" for k, v in key_dates.items()])}
+**完整任务列表（按实际执行顺序）：**
+{chr(10).join(all_tasks_with_dates)}
 
-**任务概览：**
+**任务统计：**
 - 总任务数: {total_tasks}项
-- 核心任务: {len(core_tasks)}项
+- 核心任务: {len(core_tasks)}项  
 - 推荐任务: {len(extended_tasks)}项
 
-**前10项任务：**
-{chr(10).join(task_summary_parts)}
+请生成一段摘要，要求：
+1. **严格使用上述任务列表中的日期**，不要自行计算或推测日期
+2. 提及临时住宿安排（{temp_days}天）
+3. 如果任务列表中有"房屋参观"或"Property"相关任务，使用其确切日期
+4. 如果任务列表中有"银行"或"Bank"相关任务，使用其确切日期  
+5. 如果任务列表中有"居民身份证"或"identity card"相关任务，使用其确切日期
+6. 简要提及其他重要任务（如交通卡、手机卡、探索社区等）
+7. 使用友好、自然的中文语言
+8. 保持简洁，重点突出时间节点和优先级高的任务
 
-请生成一段摘要，包含：
-1. 临时住宿安排（天数）
-2. 房屋参观服务的实际日期（从计划中提取）
-3. 银行账户开立的实际日期（从计划中提取）
-4. 房屋租赁开始日期（基于临时住宿结束日期）
-5. 其他重要安排（如交通指南、日常生活必需品、移动服务设置等）
+**示例格式：**
+"您的30天安家计划已准备就绪！从5月4日抵达开始，您将在临时住所居住30天。
 
-要求：
-- 使用友好、自然的语言
-- 确保日期与左侧详细计划中的日期完全一致
-- 突出重要时间节点
-- 保持简洁但信息完整
+关键时间线：
+- 上门看房服务：定于 Day 3-5 (5月9日) 进行
+- 银行账户开立：预计于 Day 7 (5月10日) 进行
+- 申请居民身份证：安排在 Day 7-10 进行
+
+此外，计划还包括交通卡办理、手机服务设置、探索社区等便利任务，帮助您快速融入当地生活。"
 """
     
     try:

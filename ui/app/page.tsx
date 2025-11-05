@@ -67,9 +67,9 @@ export default function Home() {
         defaultOpen={false}
         clickOutsideToClose={false}
         labels={{
-          title: "HK Immigration Assistant",
+          title: "Immigration Settlement Assistant",
           initial:
-            "Hi! 👋 I'm your Hong Kong immigration settlement assistant. I'll help you create a personalized settlement plan tailored to your timeline and needs.\n\nPlease share your details in one message (or we can chat step by step):\n- Your name\n- Arrival date\n- Office address\n- Housing needs (budget, bedrooms, preferred areas)\n- Family situation\n- Temporary accommodation needs (how many days)",
+            "Hi! 👋 I'm your immigration settlement assistant. I'll help you create a personalized settlement plan tailored to your destination and timeline.\n\nPlease share your details in one message (or we can chat step by step):\n- Your name\n- Destination country/city\n- Arrival date\n- Office address\n- Housing needs (budget, bedrooms, preferred areas)\n- Family situation\n- Temporary accommodation needs (how many days)",
         }}
       >
         <MainContent />

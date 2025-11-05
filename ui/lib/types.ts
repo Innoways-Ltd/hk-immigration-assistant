@@ -40,6 +40,8 @@ export type SettlementTask = {
 
 export type CustomerInfo = {
   name?: string;
+  destination_country?: string;
+  destination_city?: string;
   arrival_date?: string;
   office_address?: string;
   office_coordinates?: [number, number];

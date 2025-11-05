@@ -165,24 +165,15 @@ def _generate_identity_core_tasks(
     
     tasks.append({
         "id": str(uuid.uuid4()),
-        "title": "Apply for Hong Kong Identity Card (HKID)",
-        "description": "Apply for HKID at Immigration Department (required within 30 days of arrival)",
+        "title": "Apply for Resident Identity Card",
+        "description": "Apply for local resident identity card at immigration office (check local requirements for timing)",
         "day_range": day_str,
         "priority": "high",
         "task_type": TaskType.CORE.value,
         "core_activity_id": None,
         "relevance_score": None,
         "recommendation_reason": None,
-        "location": {
-            "id": "immigration-tower",
-            "name": "Immigration Tower",
-            "address": "7 Gloucester Road, Wan Chai",
-            "latitude": 22.2783,
-            "longitude": 114.1747,
-            "rating": 4.0,
-            "type": "government",
-            "description": "Immigration Department"
-        },
+        "location": None,  # Will be geocoded based on local immigration office
         "documents_needed": ["Passport", "Visa", "Employment letter", "Proof of address"],
         "estimated_duration": "1-2 hours",
         "status": "pending",
@@ -200,7 +191,7 @@ def _generate_identity_core_tasks(
     tasks.append({
         "id": str(uuid.uuid4()),
         "title": "Open Bank Account",
-        "description": "Open bank account at HSBC, Standard Chartered, or Bank of China",
+        "description": "Open local bank account at a major bank (research local banks and requirements)",
         "day_range": day_str,
         "priority": "high",
         "task_type": TaskType.CORE.value,
@@ -208,10 +199,10 @@ def _generate_identity_core_tasks(
         "relevance_score": None,
         "recommendation_reason": None,
         "location": None,  # Will be geocoded based on nearest bank
-        "documents_needed": ["Passport", "HKID", "Proof of address", "Employment letter"],
+        "documents_needed": ["Passport", "Resident ID (if available)", "Proof of address", "Employment letter"],
         "estimated_duration": "1-2 hours",
         "status": "pending",
-        "dependencies": [tasks[0]["id"]]  # After HKID
+        "dependencies": [tasks[0]["id"]]  # After resident ID
     })
     
     return tasks
@@ -250,11 +241,11 @@ def _generate_daily_life_core_tasks(
         "dependencies": []
     })
     
-    # Octopus card - Day 1 (essential for transportation)
+    # Transportation card - Day 1 (essential for public transport)
     tasks.append({
         "id": str(uuid.uuid4()),
-        "title": "Purchase Octopus Card",
-        "description": "Buy Octopus card for public transportation at MTR station or convenience store",
+        "title": "Get Transportation Card",
+        "description": "Purchase local transportation card for public transit (e.g., metro, bus)",
         "day_range": day_str,
         "priority": "high",
         "task_type": TaskType.CORE.value,
@@ -280,7 +271,7 @@ def _generate_daily_life_core_tasks(
         tasks.append({
             "id": str(uuid.uuid4()),
             "title": "Convert Driver's License",
-            "description": "Convert foreign driver's license to Hong Kong license at Transport Department",
+            "description": "Convert foreign driver's license to local license at transport authority",
             "day_range": day_str,
             "priority": "medium",
             "task_type": TaskType.CORE.value,

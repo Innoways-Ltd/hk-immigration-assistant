@@ -3,6 +3,8 @@ import { useCoAgent, useCoAgentStateRender } from "@copilotkit/react-core";
 import { useCopilotChatSuggestions } from "@copilotkit/react-ui";
 import { createContext, useContext, ReactNode, useMemo, useState, useCallback } from "react";
 import { SettlementPlan, SettlementTask, AgentState, ServiceLocation } from "@/lib/types";
+import { Card } from "@/components/ui/card";
+import { LoaderCircle } from "lucide-react";
 
 type SettlementContextType = {
   settlementPlan: SettlementPlan | null;
@@ -40,6 +42,19 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
   useCoAgentStateRender<AgentState>({
     name: "immigration",
     render: ({ state }) => {
+      if (state.planning_progress && state.planning_progress.length > 0) {
+        const latestProgress = state.planning_progress[state.planning_progress.length - 1];
+        if (!latestProgress.done) {
+          return (
+            <Card className="p-4 flex items-center gap-2">
+              <LoaderCircle className="w-4 h-4 text-blue-500 bg-blue-500/20 rounded-full p-1 animate-spin" />
+              <p className="text-sm font-medium">
+                正在创建您的安家计划，请稍候...
+              </p>
+            </Card>
+          );
+        }
+      }
       if (state.search_progress && state.search_progress.length > 0) {
         return <SearchProgress progress={state.search_progress} />
       }

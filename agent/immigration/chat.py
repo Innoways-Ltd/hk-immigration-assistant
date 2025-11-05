@@ -13,6 +13,8 @@ from langchain_core.tools import tool
 @tool
 def save_customer_info(
     name: str = None,
+    destination_country: str = None,
+    destination_city: str = None,
     arrival_date: str = None,
     office_address: str = None,
     housing_budget: int = None,
@@ -42,6 +44,7 @@ llm = AzureChatOpenAI(
     api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
     temperature=0.7,
     max_tokens=1600,
+    streaming=True,
 )
 
 tools = [
@@ -61,6 +64,14 @@ def format_customer_info_summary(customer_info: dict) -> str:
     
     if customer_info.get("name"):
         summary_parts.append(f"**Name:** {customer_info['name']}")
+    
+    if customer_info.get("destination_country") or customer_info.get("destination_city"):
+        dest_parts = []
+        if customer_info.get("destination_city"):
+            dest_parts.append(customer_info['destination_city'])
+        if customer_info.get("destination_country"):
+            dest_parts.append(customer_info['destination_country'])
+        summary_parts.append(f"**Destination:** {', '.join(dest_parts)}")
     
     if customer_info.get("arrival_date"):
         summary_parts.append(f"**Arrival Date:** {customer_info['arrival_date']}")
@@ -96,7 +107,8 @@ def format_customer_info_summary(customer_info: dict) -> str:
 def has_minimum_info(customer_info: dict) -> bool:
     """Check if we have minimum required information."""
     required_fields = ["name", "arrival_date", "office_address", "temporary_accommodation_days"]
-    return all(customer_info.get(field) for field in required_fields)
+    has_destination = customer_info.get("destination_country") or customer_info.get("destination_city")
+    return has_destination and all(customer_info.get(field) for field in required_fields)
 
 async def chat_node(state: AgentState, config: RunnableConfig):
     """Handle chat operations for immigration settlement"""
@@ -113,7 +125,7 @@ async def chat_node(state: AgentState, config: RunnableConfig):
     if not has_min_info:
         # Stage 1: Collecting information - BE PROACTIVE AND HELPFUL
         system_message = f"""
-You are an experienced Hong Kong immigration settlement assistant with deep knowledge of the city.
+You are an experienced immigration settlement assistant with deep knowledge of various destinations.
 Your role is to help new immigrants settle smoothly by understanding their needs and creating a personalized plan.
 
 **Current Stage: Information Collection & Guidance**
@@ -121,12 +133,13 @@ Your role is to help new immigrants settle smoothly by understanding their needs
 **Your Personality:**
 - Warm, friendly, and conversational (not robotic)
 - Proactive in offering suggestions and insights
-- Knowledgeable about Hong Kong districts, transportation, and lifestyle
+- Knowledgeable about local districts, transportation, and lifestyle in various destinations
 - Ask thoughtful follow-up questions to better understand their needs
 
-**Information needed:**
+**Information needed (CRITICAL - collect all):**
 - Customer's name
-- Arrival date in Hong Kong
+- **Destination country and/or city** (e.g., "Hong Kong", "Singapore", "London, UK")
+- Arrival date at destination
 - Office address (where they will work)
 - Housing needs (budget, bedrooms, preferred areas)
 - Family situation (size, children, pets)
@@ -151,11 +164,11 @@ Your role is to help new immigrants settle smoothly by understanding their needs
 5. **Use conversational language** - avoid robotic phrases like "I have collected the following information"
 
 **Example of good interaction:**
-User: "I'm moving to Hong Kong next month, office is in Admiralty."
-You: "Welcome! Admiralty is a great central location. For housing, you have several excellent options nearby:
-- **Wan Chai/Causeway Bay**: Vibrant area, 5-10 min commute, lots of dining and shopping
-- **Mid-Levels**: Quieter, more expat-friendly, 15 min commute
-- **Quarry Bay/Tai Koo**: More affordable, 15-20 min via MTR
+User: "I'm moving to [City] next month, office is in [District]."
+You: "Welcome! [District] is a great location. For housing, I can help you explore options nearby based on your preferences:
+- Proximity to office for short commute
+- Quieter residential areas
+- More affordable neighborhoods
 
 What's your budget range and how many bedrooms do you need? Also, will you be moving alone or with family?"
 
@@ -180,7 +193,7 @@ DO NOT create the settlement plan yet - focus on understanding their needs deepl
         insights_text = "\n".join(insights) if insights else ""
         
         system_message = f"""
-You are a helpful Hong Kong immigration settlement assistant.
+You are a helpful immigration settlement assistant.
 
 **Current Stage: Information Confirmation & Insights**
 
@@ -211,14 +224,14 @@ You have collected the following information:
 "Perfect! Let me confirm what I have:
 [summary]
 
-Based on your office in Central and preference for Sheung Wan, you'll have an excellent 10-minute commute via MTR. The area is also great for dining and has a nice mix of local and expat-friendly spots.
+Based on your office location and preferred areas, you'll have good commute options. The area should have nice amenities and services for your needs.
 
 Is there anything else you'd like me to know before we create your personalized settlement plan? For example, any specific apartment features you need, or particular services you want nearby?"
 """
     else:
         # Stage 3: Plan creation and assistance
         system_message = f"""
-You are a helpful Hong Kong immigration settlement assistant.
+You are a helpful immigration settlement assistant.
 
 **Current Stage: Plan Creation & Ongoing Assistance**
 
@@ -235,7 +248,10 @@ The customer has confirmed their information.
    - Example: "Great! I'm ready to create your personalized settlement plan. Should I go ahead and generate it for you?"
 2. **Wait for explicit request** before calling create_settlement_plan
 3. **Keywords indicating they want the plan**: "yes", "create", "generate", "make", "start", "go ahead", "please", "show me"
-4. **After creating the plan**:
+4. **IMPORTANT: When user requests plan creation**, IMMEDIATELY respond with an acknowledgment message BEFORE calling create_settlement_plan:
+   - Example: "Perfect! I'm now creating your personalized settlement plan. This will take a moment as I'm gathering information about locations, optimizing routes, and organizing tasks. Please wait..."
+   - Then call create_settlement_plan
+5. **After creating the plan**:
    - Explain the key highlights (duration, number of tasks, priorities)
    - Point out any important deadlines or time-sensitive tasks
    - Offer to answer questions or make adjustments
@@ -246,14 +262,14 @@ The customer has confirmed their information.
 6. **Maintain conversational tone** - you're their helpful guide, not a robot
 
 **Example after plan creation:**
-"I've created your 14-day settlement plan with 11 essential tasks! Here are the highlights:
+"I've created your settlement plan with essential tasks! Here are the highlights:
 
-📍 **Day 1**: Airport pickup, check-in, and getting your Octopus card and SIM card
-🏠 **Days 3-5**: Property viewings in Causeway Bay
+📍 **Day 1**: Airport pickup, check-in, and getting your transportation card and SIM card
+🏠 **Days 3-5**: Property viewings in your preferred areas
 🏦 **Day 7**: Opening your bank account
-📋 **Day 10**: Applying for your HKID card
+📋 **Day 10**: Applying for your resident identity card
 
-The plan is optimized based on your 5-day temporary accommodation, so we've front-loaded the housing search. You can see all tasks on the left, and click on any task to see it highlighted on the map.
+The plan is optimized based on your temporary accommodation duration. You can see all tasks on the left, and click on any task to see it highlighted on the map.
 
 Would you like me to explain any specific task in detail, or would you like to make any adjustments?"
 """
