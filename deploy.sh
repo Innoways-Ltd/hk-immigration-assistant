@@ -57,6 +57,10 @@ check_env_variables() {
         "AZURE_OPENAI_API_KEY"
         "AZURE_OPENAI_ENDPOINT"
         "AZURE_OPENAI_DEPLOYMENT"
+    )
+    
+    # Optional variables (warn if missing)
+    optional_vars=(
         "GOOGLE_MAPS_API_KEY"
     )
     
@@ -74,6 +78,22 @@ check_env_variables() {
             echo "  - $var"
         done
         exit 1
+    fi
+    
+    # Check optional variables
+    missing_optional=()
+    for var in "${optional_vars[@]}"; do
+        if [ -z "${!var}" ]; then
+            missing_optional+=("$var")
+        fi
+    done
+    
+    if [ ${#missing_optional[@]} -ne 0 ]; then
+        print_warning "Optional environment variables not set:"
+        for var in "${missing_optional[@]}"; do
+            echo "  - $var"
+        done
+        echo ""
     fi
     
     print_info "All required environment variables are set ✓"
