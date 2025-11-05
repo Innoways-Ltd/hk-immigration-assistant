@@ -58,6 +58,46 @@ ESSENTIAL_TASKS_TEMPLATE = {
                 "location_type": "supermarket"
             },
             {
+                "name": "Find Nearby Convenience Store",
+                "priority": "P0",
+                "day_offset": 0,
+                "category": "orientation",
+                "dependencies": ["Check-in to Temporary Accommodation"],
+                "description": "Locate 24-hour convenience store near accommodation for emergency needs",
+                "duration_hours": 0.5,
+                "location_type": "convenience_store"
+            },
+            {
+                "name": "Locate Nearby Pharmacy",
+                "priority": "P0",
+                "day_offset": 0,
+                "category": "healthcare",
+                "dependencies": ["Check-in to Temporary Accommodation"],
+                "description": "Find local pharmacy for medical supplies and basic medications",
+                "duration_hours": 0.5,
+                "location_type": "pharmacy"
+            },
+            {
+                "name": "Find Nearby Restaurants",
+                "priority": "P0",
+                "day_offset": 0,
+                "category": "food",
+                "dependencies": ["Check-in to Temporary Accommodation"],
+                "description": "Discover restaurants and food options near accommodation",
+                "duration_hours": 1,
+                "location_type": "restaurant"
+            },
+            {
+                "name": "Locate ATM and Bank",
+                "priority": "P0",
+                "day_offset": 0,
+                "category": "finance",
+                "dependencies": ["Check-in to Temporary Accommodation"],
+                "description": "Find nearby ATM for cash withdrawal and bank location",
+                "duration_hours": 0.5,
+                "location_type": "atm"
+            },
+            {
                 "name": "Explore Neighborhood",
                 "priority": "P1",
                 "day_offset": 1,
@@ -317,7 +357,7 @@ ESSENTIAL_TASKS_TEMPLATE = {
 
 async def generate_comprehensive_tasks(
     messages: List[Dict[str, Any]],
-    customer_info: CustomerInfo
+    customer_info: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
     """
     Generate comprehensive 30-day settlement plan.
@@ -368,7 +408,7 @@ async def generate_comprehensive_tasks(
         logger.info(f"Geocoded {len(geocoded_tasks)} tasks")
         
         # Step 7: Convert to SettlementTask format
-        formatted_tasks = convert_to_settlement_task_format(geocoded_tasks, customer_info.arrival_date)
+        formatted_tasks = convert_to_settlement_task_format(geocoded_tasks, customer_info.get("arrival_date", datetime.now().strftime("%Y-%m-%d")))
         logger.info(f"Formatted {len(formatted_tasks)} tasks")
         
         return formatted_tasks
@@ -377,13 +417,13 @@ async def generate_comprehensive_tasks(
         logger.error(f"Error generating comprehensive tasks: {e}")
         # Fallback to basic essential tasks
         essential = generate_essential_tasks(customer_info)
-        scheduled = schedule_tasks_with_dependencies(essential, customer_info.arrival_date)
-        return convert_to_settlement_task_format(scheduled, customer_info.arrival_date)
+        scheduled = schedule_tasks_with_dependencies(essential, customer_info.get("arrival_date", datetime.now().strftime("%Y-%m-%d")))
+        return convert_to_settlement_task_format(scheduled, customer_info.get("arrival_date", datetime.now().strftime("%Y-%m-%d")))
 
 
 async def extract_user_activities(
     messages: List[Dict[str, Any]],
-    customer_info: CustomerInfo
+    customer_info: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
     """Extract activities mentioned by user in conversation."""
     try:
@@ -404,8 +444,8 @@ Conversation:
 {conversation_text}
 
 Customer Info:
-- Arrival Date: {customer_info.arrival_date}
-- Preferred Dates: {json.dumps(customer_info.preferred_dates or {{}})}
+- Arrival Date: {customer_info.get('arrival_date', 'Not specified')}
+- Preferred Dates: {json.dumps(customer_info.get('preferred_dates') or {})}
 
 Extract ONLY activities that the user explicitly mentioned. Return as JSON array:
 [
@@ -437,14 +477,14 @@ If no specific activities mentioned, return empty array: []
         return []
 
 
-def generate_essential_tasks(customer_info: CustomerInfo) -> List[Dict[str, Any]]:
+def generate_essential_tasks(customer_info: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Generate essential tasks from knowledge base."""
     tasks = []
     
     for phase_key, phase_data in ESSENTIAL_TASKS_TEMPLATE.items():
         for task_template in phase_data["tasks"]:
             # Skip conditional tasks if condition not met
-            if task_template.get("conditional") == "needs_car" and customer_info.transportation_preference != "car":
+            if task_template.get("conditional") == "needs_car" and customer_info.get("transportation_preference") != "car":
                 continue
             
             task = {
@@ -575,7 +615,7 @@ def schedule_tasks_with_dependencies(
 
 async def generate_task_details_batch(
     tasks: List[Dict[str, Any]],
-    customer_info: CustomerInfo
+    customer_info: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
     """Generate detailed descriptions for all tasks."""
     # For now, use existing descriptions
@@ -586,14 +626,14 @@ async def generate_task_details_batch(
         
         # Add location search query if location_type exists
         if task.get("location_type"):
-            task["location_search"] = f"{task['location_type']} near {customer_info.destination_city}"
+            task["location_search"] = f"{task['location_type']} near {customer_info.get('destination_city', 'Hong Kong')}"
     
     return tasks
 
 
 async def geocode_tasks_batch(
     tasks: List[Dict[str, Any]],
-    customer_info: CustomerInfo
+    customer_info: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
     """Geocode all tasks with location information."""
     geocoding_service = get_geocoding_service()
@@ -603,7 +643,7 @@ async def geocode_tasks_batch(
             try:
                 location = await geocoding_service.geocode_address(
                     task["location_search"],
-                    customer_info.destination_city
+                    customer_info.get("destination_city", "Hong Kong")
                 )
                 
                 if location:

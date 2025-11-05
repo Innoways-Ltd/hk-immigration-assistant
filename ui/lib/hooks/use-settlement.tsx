@@ -107,7 +107,23 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
       return locations;
     }
 
-    // Default: show all locations
+    // Default: show Day 1 locations only
+    if (state.settlement_plan.tasks && state.settlement_plan.tasks.length > 0) {
+      const day1Tasks = state.settlement_plan.tasks.filter((task: SettlementTask) => {
+        const dayMatch = task.day_range.match(/Day (\d+)/);
+        return dayMatch && parseInt(dayMatch[1]) === 1;
+      });
+      
+      const day1Locations = day1Tasks
+        .map((task: SettlementTask) => task.location)
+        .filter((loc): loc is ServiceLocation => loc !== null && loc !== undefined);
+      
+      if (day1Locations.length > 0) {
+        return day1Locations;
+      }
+    }
+    
+    // Fallback: show all locations if no Day 1 tasks found
     return state.settlement_plan.service_locations || [];
   }, [state.settlement_plan, hoveredDay, hoveredTaskId]);
 
