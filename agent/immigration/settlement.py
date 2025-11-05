@@ -17,11 +17,7 @@ from immigration.task_generator import (
     extract_service_locations,
     calculate_plan_duration
 )
-from immigration.smart_task_generator import generate_smart_tasks
-from immigration.extended_task_generator import (
-    generate_extended_tasks,
-    merge_and_optimize_tasks
-)
+from immigration.comprehensive_task_generator import generate_comprehensive_tasks
 from immigration.plan_summarizer import generate_plan_summary
 
 @tool
@@ -499,19 +495,13 @@ async def settlement_node(state: AgentState, config: RunnableConfig):
         # Calculate plan duration
         plan_duration = calculate_plan_duration(customer_info)
         
-        # Phase 1: Generate smart tasks based on conversation
-        # Use LLM to analyze user's conversation and generate personalized tasks
-        core_tasks = await generate_smart_tasks(state["messages"], customer_info)
+        # Generate comprehensive 30-day settlement plan
+        # This includes: user activities + essential tasks + smart scheduling
+        # Tasks are already optimally scheduled by day with dependency resolution
+        optimized_tasks = await generate_comprehensive_tasks(state["messages"], customer_info)
         
-        # Phase 2: Generate extended (AI-suggested) tasks around core tasks
-        extended_tasks = await generate_extended_tasks(core_tasks, customer_info, max_per_task=2)
-        
-        # Phase 3: Merge core and extended tasks
-        all_tasks = await merge_and_optimize_tasks(core_tasks, extended_tasks)
-        
-        # Phase 4: Optimize task order using real routing API
+        # Get office coordinates for map centering
         office_coords = customer_info.get("office_coordinates", (22.2770, 114.1720))
-        optimized_tasks = await optimize_tasks_with_routing(all_tasks, office_coords)
         
         # Extract service locations from tasks
         service_locations = extract_service_locations(optimized_tasks)

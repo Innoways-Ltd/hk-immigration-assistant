@@ -153,7 +153,7 @@ Your role is to help new immigrants settle smoothly by understanding their needs
 - Transportation needs (car or public transport)
 - **Temporary accommodation days** (CRITICAL: how many days they need temporary housing)
 - **Preferred dates for specific tasks** (IMPORTANT: if user mentions specific dates for activities like home viewing, bank account opening, etc., capture them in preferred_dates field)
-  Example: preferred_dates={{"home_viewing": "2025-05-09", "bank_account": "2025-05-10"}}
+  Example: preferred_dates={{{{"home_viewing": "2025-05-09", "bank_account": "2025-05-10"}}}}
 
 **Current Customer Information:**
 {json.dumps(customer_info, indent=2) if customer_info else "No information collected yet"}
