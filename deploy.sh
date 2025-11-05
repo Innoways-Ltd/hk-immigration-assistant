@@ -100,12 +100,12 @@ check_env_variables() {
 }
 
 build_images() {
-    print_info "Building Docker images..."
+    print_info "Building Docker images (using cache)..."
     
     if command -v docker-compose &> /dev/null; then
-        docker-compose build --no-cache
+        docker-compose build
     else
-        docker compose build --no-cache
+        docker compose build
     fi
     
     print_info "Docker images built successfully ✓"

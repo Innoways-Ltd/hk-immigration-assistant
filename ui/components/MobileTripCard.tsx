@@ -9,6 +9,7 @@ import { TripSelect } from "./TripSelect";
 import { TripContent } from "./TripContent";
 import { ScrollArea } from "./ui/scroll-area";
 import { Map } from "leaflet";
+import { useEffect } from "react";
 
 export type MobileTripCardProps = { 
   className?: string;
@@ -18,9 +19,16 @@ export type MobileTripCardProps = {
 export function MobileTripCard({ className, map }: MobileTripCardProps) {
   const { selectedTrip } = useTrips();
 
-  if (selectedTrip && map) {
-    map.setView([selectedTrip.center_latitude, selectedTrip.center_longitude], selectedTrip.zoom_level || 13);
-  }
+  useEffect(() => {
+    if (selectedTrip && map) {
+      try {
+        map.setView([selectedTrip.center_latitude, selectedTrip.center_longitude], selectedTrip.zoom_level || 13);
+      } catch (error) {
+        // Silently handle errors if map is being unmounted
+        console.debug("Map view update error:", error);
+      }
+    }
+  }, [selectedTrip, map]);
 
   return (
     <Drawer>

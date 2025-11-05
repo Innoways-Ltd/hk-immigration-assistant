@@ -319,7 +319,10 @@ def generate_recommendation_reason(
     relevance_score: float
 ) -> str:
     """
-    Generate a human-readable reason for recommending this service.
+    Generate a human-readable, unique reason for recommending this service.
+    
+    This function creates more specific and varied reasons to avoid
+    repetitive recommendations (e.g., "就在湾仔附近，非常方便").
     """
     if not core_task.get("location"):
         return "Convenient location"
@@ -333,25 +336,57 @@ def generate_recommendation_reason(
     )
     
     service_type = service["type"].replace("_", " ").title()
+    service_name = service.get("name", service_type)
     
-    if distance_km < 0.5:
-        distance_desc = "just around the corner"
+    # Build more specific and varied reasons
+    reasons = []
+    
+    # Distance-based description
+    if distance_km < 0.3:
+        distance_desc = "就在附近，步行几分钟即达"
+        convenience = "非常适合在完成主要任务后顺道前往"
+    elif distance_km < 0.5:
+        distance_desc = "距离很近，步行约5-10分钟"
+        convenience = "方便您在办理事务时稍作休息"
     elif distance_km < 1.0:
-        distance_desc = "within walking distance"
+        distance_desc = f"距离约{int(distance_km * 1000)}米"
+        convenience = "适合在完成主要任务后前往"
     else:
-        distance_desc = f"about {distance_km:.1f}km away"
+        distance_desc = f"距离约{distance_km:.1f}公里"
+        convenience = "可以安排在行程中"
     
-    reasons = [
-        f"{service_type} {distance_desc} from {core_location['name']}",
-        f"Convenient to visit while you're in the area",
-    ]
+    # Service-specific highlights
+    service_highlights = {
+        "cafe": ["这家咖啡店环境舒适，适合短暂休息", "可以在这里稍作歇息，品尝香港本地特色饮品"],
+        "restaurant": ["这里是品尝地道美食的好去处", "推荐在这里用餐，体验本地风味"],
+        "supermarket": ["可以在这里采购日常用品", "适合购买生活必需品"],
+        "pharmacy": ["可以在这里购买常用药品", "方便购买日常健康用品"],
+        "gym": ["适合保持运动习惯", "可以在这里锻炼身体"],
+        "park": ["适合放松和散步", "是休息和呼吸新鲜空气的好地方"],
+    }
     
+    highlight = service_highlights.get(service["type"], ["值得一去"])
+    
+    # Combine reasons with variety
+    if service_name and service_name != service_type:
+        reasons.append(f"{service_name} {distance_desc}")
+    else:
+        reasons.append(f"{service_type} {distance_desc}")
+    
+    reasons.append(convenience)
+    
+    # Add service-specific highlight (randomly select for variety)
+    import random
+    if highlight:
+        reasons.append(random.choice(highlight))
+    
+    # Add relevance-based recommendation
     if relevance_score > 0.8:
-        reasons.append("Highly recommended for your needs")
+        reasons.append("强烈推荐")
     elif relevance_score > 0.6:
-        reasons.append("Good option to consider")
+        reasons.append("值得考虑")
     
-    return ". ".join(reasons) + "."
+    return "。".join(reasons) + "。"
 
 
 async def find_extended_activities_for_task(

@@ -2,7 +2,7 @@
 Extended Task Generator - Generates AI-suggested tasks around core tasks
 """
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
 
@@ -29,16 +29,23 @@ async def generate_extended_tasks(
     2. Geographical nearness (within 2km radius)
     3. Lifestyle convenience (based on user profile)
     
+    **Optimization**: Implements deduplication to avoid recommending similar
+    activities multiple times (e.g., multiple cafes in the same area).
+    
     Args:
         core_tasks: List of core tasks
         customer_info: Customer information
         max_per_task: Maximum extended tasks to generate per core task
         
     Returns:
-        List of extended tasks
+        List of extended tasks (deduplicated)
     """
     extended_tasks = []
     task_id_counter = 1000  # Start extended task IDs from 1000
+    
+    # Track recommended activities to avoid duplicates
+    # Key: (service_type, district) tuple, Value: List of days already recommended
+    recommended_footprints: Dict[Tuple[str, str], List[int]] = {}
     
     # Group core tasks by day
     tasks_by_day = _group_tasks_by_day(core_tasks)
@@ -56,11 +63,24 @@ async def generate_extended_tasks(
             activities = await find_extended_activities_for_task(
                 anchor_task,
                 customer_info,
-                max_activities=max_per_task
+                max_activities=max_per_task * 2  # Get more candidates for filtering
             )
             
-            # Convert activities to extended tasks
+            # Convert activities to extended tasks with deduplication
             for service, score, reason in activities:
+                # Check for duplicates based on service type and location
+                service_type = service.get("type", "unknown")
+                district = _extract_district(service.get("address", ""))
+                footprint = (service_type, district)
+                
+                # Skip if we've already recommended this type in this area
+                # Allow same type in different areas, but not in same area
+                if footprint in recommended_footprints:
+                    # Check if it's on a different day (allow if days are far apart)
+                    existing_days = recommended_footprints[footprint]
+                    if day in existing_days or any(abs(day - d) <= 2 for d in existing_days):
+                        continue  # Skip duplicate
+                
                 extended_task = _create_extended_task(
                     service,
                     reason,
@@ -74,11 +94,38 @@ async def generate_extended_tasks(
                     extended_tasks.append(extended_task)
                     task_id_counter += 1
                     
+                    # Track this recommendation
+                    if footprint not in recommended_footprints:
+                        recommended_footprints[footprint] = []
+                    recommended_footprints[footprint].append(day)
+                    
         except Exception as e:
             logger.error(f"Error generating extended tasks for day {day}: {e}")
             continue
     
     return extended_tasks
+
+
+def _extract_district(address: str) -> str:
+    """
+    Extract district name from address (e.g., "Wan Chai", "Central").
+    
+    Returns:
+        District name or "unknown"
+    """
+    # Common Hong Kong districts
+    districts = [
+        "Wan Chai", "Central", "Admiralty", "Causeway Bay", "Sheung Wan",
+        "Mid-Levels", "Quarry Bay", "Tai Koo", "Tsim Sha Tsui", "Mong Kok",
+        "Yau Ma Tei", "Jordan", "Kowloon", "Sha Tin", "Tuen Mun"
+    ]
+    
+    address_lower = address.lower()
+    for district in districts:
+        if district.lower() in address_lower:
+            return district
+    
+    return "unknown"
 
 
 def _group_tasks_by_day(tasks: List[SettlementTask]) -> Dict[int, List[SettlementTask]]:

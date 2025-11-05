@@ -13,6 +13,7 @@ services:
       - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
       - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2025-01-01-preview}
       - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - ENVIRONMENT=production
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
@@ -33,6 +34,12 @@ services:
     build:
       context: ./ui
       dockerfile: Dockerfile
+      args:
+        - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+        - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+        - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+        - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2025-01-01-preview}
+        - REMOTE_ACTION_URL=http://agent:8000/copilotkit
     container_name: hk-immigration-ui
     ports:
       - "3000:3000"

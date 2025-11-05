@@ -63,7 +63,7 @@ class CustomerInfo(TypedDict):
     needs_car: bool
     temporary_accommodation_days: Optional[int]
 
-class SettlementPlan(TypedDict):
+class SettlementPlan(TypedDict, total=False):
     """The complete settlement plan."""
     id: str
     customer_name: str
@@ -73,6 +73,7 @@ class SettlementPlan(TypedDict):
     tasks: List[SettlementTask]
     properties: List[Property]
     service_locations: List[ServiceLocation]
+    summary: Optional[str]  # Human-readable summary generated from finalized plan
 
 class SearchProgress(TypedDict):
     """The progress of a search."""

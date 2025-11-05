@@ -61,6 +61,7 @@ export type SettlementPlan = {
   tasks: SettlementTask[];
   properties: Property[];
   service_locations: ServiceLocation[];
+  summary?: string;  // Human-readable summary generated from finalized plan
 };
 
 export type SearchProgress = {

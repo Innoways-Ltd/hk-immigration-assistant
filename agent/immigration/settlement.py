@@ -21,6 +21,7 @@ from immigration.extended_task_generator import (
     generate_extended_tasks,
     merge_and_optimize_tasks
 )
+from immigration.plan_summarizer import generate_plan_summary
 
 @tool
 def create_settlement_plan(customer_name: str) -> dict:
@@ -523,6 +524,11 @@ async def settlement_node(state: AgentState, config: RunnableConfig):
             "properties": [],
             "service_locations": service_locations
         }
+        
+        # Phase 5: Generate summary from FINALIZED plan (ensures consistency)
+        # This MUST happen after all optimizations are complete
+        plan_summary = await generate_plan_summary(plan, customer_info)
+        plan["summary"] = plan_summary  # Store summary in plan
         
         state["settlement_plan"] = plan
         state["planning_progress"].append({

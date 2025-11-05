@@ -1,6 +1,6 @@
 import { MapContainer, TileLayer, Marker, Tooltip, Polyline, useMap } from "react-leaflet";
 import { useSettlement } from "@/lib/hooks/use-settlement";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Map, divIcon, LatLngBounds } from "leaflet";
 import { cn } from "@/lib/utils";
 import { SettlementCard } from "@/components/SettlementCard";
@@ -19,59 +19,86 @@ function MapUpdater() {
   useEffect(() => {
     if (!map) return;
 
-    // If there are focused locations, zoom to them
-    if (focusedLocations && focusedLocations.length > 0) {
-      if (focusedLocations.length === 1) {
-        // Single location: center and zoom in as much as possible
-        const loc = focusedLocations[0];
-        map.setView([loc.latitude, loc.longitude], 17, { animate: true, duration: 0.5 });
-      } else {
-        // Multiple locations: fit bounds with maximum zoom
-        const bounds = new LatLngBounds(
-          focusedLocations.map(loc => [loc.latitude, loc.longitude])
-        );
-        
-        // Calculate optimal padding based on number of locations
-        const padding = focusedLocations.length <= 3 ? [80, 80] : [50, 50];
-        
-        map.fitBounds(bounds, { 
-          padding: padding,
-          animate: true,
-          duration: 0.5,
-          maxZoom: 16  // Increased max zoom for better visibility
-        });
+    // Track if component is still mounted
+    let isMounted = true;
+
+    // Use a small delay to ensure map is fully initialized
+    const timeoutId = setTimeout(() => {
+      if (!isMounted || !map) return;
+
+      try {
+        // Check if map container still exists in DOM
+        if (!map.getContainer() || !map.getContainer().parentElement) {
+          return;
+        }
+
+        // If there are focused locations, zoom to them
+        if (focusedLocations && focusedLocations.length > 0) {
+          if (focusedLocations.length === 1) {
+            // Single location: center and zoom in as much as possible
+            const loc = focusedLocations[0];
+            map.setView([loc.latitude, loc.longitude], 17, { animate: true, duration: 0.5 });
+          } else {
+            // Multiple locations: fit bounds with maximum zoom
+            const bounds = new LatLngBounds(
+              focusedLocations.map(loc => [loc.latitude, loc.longitude])
+            );
+            
+            // Calculate optimal padding based on number of locations
+            const padding: [number, number] = focusedLocations.length <= 3 ? [80, 80] : [50, 50];
+            
+            map.fitBounds(bounds, { 
+              padding: padding,
+              animate: true,
+              duration: 0.5,
+              maxZoom: 16  // Increased max zoom for better visibility
+            });
+          }
+        } else if (settlementPlan) {
+          // No focused locations: show default view
+          map.setView(
+            [settlementPlan.center_latitude, settlementPlan.center_longitude],
+            settlementPlan.zoom || 14,
+            { animate: true, duration: 0.5 }
+          );
+        }
+      } catch (error) {
+        // Silently handle errors if map is being unmounted
+        console.debug("Map update error (likely during unmount):", error);
       }
-    } else if (settlementPlan) {
-      // No focused locations: show default view
-      map.setView(
-        [settlementPlan.center_latitude, settlementPlan.center_longitude],
-        settlementPlan.zoom || 14,
-        { animate: true, duration: 0.5 }
-      );
-    }
+    }, 100);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
   }, [map, focusedLocations, settlementPlan]);
 
   return null;
 }
 
 export function MapCanvas({ className }: MapCanvasProps) {
-  const [map, setMap] = useState<Map | null>(null);
   const { settlementPlan, focusedLocations } = useSettlement();
   const isDesktop = useMediaQuery("(min-width: 900px)");
 
-  // Get IDs of focused locations for highlighting
-  const focusedLocationIds = new Set(focusedLocations.map(loc => loc.id));
+  // Get IDs of focused locations for highlighting (use useMemo to avoid recreating on every render)
+  const focusedLocationIds = useMemo(() => {
+    return new Set(focusedLocations.map(loc => loc.id));
+  }, [focusedLocations]);
+
+  // Use a stable key for MapContainer to prevent remount issues
+  const mapKey = settlementPlan?.id || "default-map";
 
   return (
 		<div className="">
 			<MapContainer
+				key={mapKey}
 				className={cn("w-screen h-screen", className)}
 				style={{ zIndex: 0 }}
 				center={[0, 0]}
 				zoom={1}
 				zoomAnimationThreshold={100}
 				zoomControl={false}
-				ref={setMap}
 			>
 				<TileLayer
 					url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -99,9 +126,12 @@ export function MapCanvas({ className }: MapCanvasProps) {
               const isFocused = focusedLocationIds.has(place.id);
               const isVisible = focusedLocations.length === 0 || isFocused;
               
+              // Use stable key based on place.id only (don't include state to avoid remounting)
+              const markerKey = `marker-${place.id}-${i}`;
+              
               return (
                 <Marker 
-                  key={i} 
+                  key={markerKey}
                   position={[place.latitude, place.longitude]}
                   icon={divIcon({
                     className: "bg-transparent",
@@ -120,7 +150,7 @@ export function MapCanvas({ className }: MapCanvasProps) {
           </>
         )}
       </MapContainer>
-      {map && isDesktop && (
+      {isDesktop && (
         <div className="absolute h-screen top-0 left-0 p-6 pointer-events-none flex items-start w-[35%] md:w-[40%] lg:w-[35%] 2xl:w-[30%]">
           <SettlementCard className="w-full h-full pointer-events-auto" />
         </div>
