@@ -517,15 +517,23 @@ If no specific activities mentioned, return empty array: []
             
         activities = json.loads(content)
         
-        # Add type and date fields for expansion logic
+        # Add type, date, and day_offset fields for expansion logic
+        arrival_date = datetime.strptime(customer_info.get("arrival_date", datetime.now().strftime("%Y-%m-%d")), "%Y-%m-%d")
+        
         for activity in activities:
             activity["type"] = "core"  # User activities are core activities
+            
             if activity.get("preferred_date"):
                 activity["date"] = activity["preferred_date"]
             else:
                 # Default to arrival date + 5 days if no date specified
-                arrival_date = datetime.strptime(customer_info.get("arrival_date", datetime.now().strftime("%Y-%m-%d")), "%Y-%m-%d")
                 activity["date"] = (arrival_date + timedelta(days=5)).strftime("%Y-%m-%d")
+            
+            # Calculate day_offset from arrival_date
+            activity_date = datetime.strptime(activity["date"], "%Y-%m-%d")
+            activity["day_offset"] = (activity_date - arrival_date).days
+            
+            logger.info(f"User activity '{activity['name']}': date={activity['date']}, day_offset={activity['day_offset']}")
         
         return activities if isinstance(activities, list) else []
         
