@@ -17,7 +17,23 @@ function MapUpdater() {
   const { focusedLocations, settlementPlan } = useSettlement();
 
   useEffect(() => {
-    if (!map) return;
+    // Add safety check for map instance
+    if (!map) {
+      console.warn('[MapUpdater] Map instance not available');
+      return;
+    }
+    
+    // Ensure map container exists
+    try {
+      const container = map.getContainer();
+      if (!container) {
+        console.warn('[MapUpdater] Map container not found');
+        return;
+      }
+    } catch (error) {
+      console.warn('[MapUpdater] Error accessing map container:', error);
+      return;
+    }
 
     // Track if component is still mounted
     let isMounted = true;
@@ -112,7 +128,7 @@ export function MapCanvas({ className }: MapCanvasProps) {
   const mapKey = settlementPlan?.id || "default-map";
 
   return (
-		<div className="">
+		<div className="relative w-full h-full">
 			<MapContainer
 				key={mapKey}
 				className={cn("w-screen h-screen", className)}
