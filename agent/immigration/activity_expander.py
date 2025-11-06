@@ -86,8 +86,10 @@ def analyze_time_window(main_activity: Dict[str, Any]) -> Dict[str, Any]:
     
     # Calculate day_offset for expansion
     expansion_day_offset = main_activity.get("day_offset", 0)
+    logger.info(f"Main activity '{main_activity.get('name')}' has day_offset={expansion_day_offset}")
     if not can_expand_same_day:
         expansion_day_offset += 1
+        logger.info(f"Cannot expand same day, incremented to day_offset={expansion_day_offset}")
     
     return {
         "date": main_activity["date"],
@@ -187,13 +189,16 @@ def generate_expansion_candidates(
             "parent_activity": main_activity["name"],
             "dependencies": [main_activity["name"]]  # Depends on main activity
         }
+        logger.info(f"Created expansion '{service['name']}' with day_offset={time_window['expansion_day_offset']}")
         
         candidates.append(candidate)
     
     # Sort by relevance score
     candidates.sort(key=lambda x: x["relevance_score"], reverse=True)
     
-    logger.info(f"Generated {len(candidates)} expansion candidates for '{main_activity['name']}'")
+    logger.info(f"Generated {len(candidates)} expansion candidates for '{main_activity['name']}' (day_offset={main_activity.get('day_offset', 0)})")
+    if candidates:
+        logger.info(f"First candidate: {candidates[0]['name']} with day_offset={candidates[0]['day_offset']}")
     return candidates
 
 

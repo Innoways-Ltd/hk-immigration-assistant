@@ -390,11 +390,15 @@ async def generate_comprehensive_tasks(
         # Step 2: Geocode user activities FIRST (needed for expansion)
         geocoded_user_activities = await geocode_user_activities(user_activities, customer_info)
         logger.info(f"Geocoded {len(geocoded_user_activities)} user activities")
+        for activity in geocoded_user_activities:
+            logger.info(f"User activity: {activity.get('name')} - day_offset={activity.get('day_offset')}, date={activity.get('date')}")
         
         # Step 3: Expand user activities with nearby services (now they have locations!)
         expansion_candidates = expand_all_activities(geocoded_user_activities, customer_info)
         filtered_expansions = filter_and_deduplicate(expansion_candidates, max_per_day=3)
         logger.info(f"Generated {len(filtered_expansions)} expansion activities")
+        for expansion in filtered_expansions[:5]:  # Log first 5
+            logger.info(f"Expansion: {expansion.get('name')} - day_offset={expansion.get('day_offset')}, parent={expansion.get('parent_activity')}")
         
         # Step 4: Generate essential tasks
         essential_tasks = generate_essential_tasks(customer_info)
