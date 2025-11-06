@@ -18,10 +18,20 @@ from copilotkit import CopilotKitRemoteEndpoint, LangGraphAGUIAgent
 from immigration.agent import graph
 
 
+# Workaround for CopilotKit bug: LangGraphAGUIAgent missing dict_repr method
+class FixedLangGraphAGUIAgent(LangGraphAGUIAgent):
+    def dict_repr(self):
+        """Return dictionary representation for CopilotKit SDK compatibility"""
+        return {
+            "name": self.name if hasattr(self, 'name') else "immigration",
+            "description": self.description if hasattr(self, 'description') else "",
+        }
+
+
 app = FastAPI()
 sdk = CopilotKitRemoteEndpoint(
     agents=[
-        LangGraphAGUIAgent(
+        FixedLangGraphAGUIAgent(
             name="immigration",
             description="Helps new immigrants settle into Hong Kong by creating personalized settlement plans.",
             graph=graph,
