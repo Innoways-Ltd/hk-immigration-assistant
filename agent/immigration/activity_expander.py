@@ -169,7 +169,7 @@ def generate_expansion_candidates(
             "priority": service["priority"],
             "duration_hours": service["duration_hours"],
             "location_type": service["type"],
-            "search_query": f"{service['type']} near {main_location.get('name', '')}",
+            "location_search": f"{service['type']} near {main_location.get('name', '')}",  # Changed from search_query
             "search_center": {
                 "latitude": main_location.get("latitude"),
                 "longitude": main_location.get("longitude")

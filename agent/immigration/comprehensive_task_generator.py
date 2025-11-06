@@ -12,6 +12,7 @@ from langchain_openai import AzureChatOpenAI
 from immigration.state import CustomerInfo
 from immigration.geocoding_service import get_geocoding_service
 from immigration.activity_expander import expand_all_activities, filter_and_deduplicate
+from immigration.task_optimizer import balance_task_load, validate_dependencies, calculate_plan_summary, generate_plan_explanation
 
 logger = logging.getLogger(__name__)
 
@@ -386,37 +387,70 @@ async def generate_comprehensive_tasks(
         user_activities = await extract_user_activities(messages, customer_info)
         logger.info(f"Extracted {len(user_activities)} user activities")
         
-        # Step 2: Generate essential tasks
-        essential_tasks = generate_essential_tasks(customer_info)
-        logger.info(f"Generated {len(essential_tasks)} essential tasks")
+        # Step 2: Geocode user activities FIRST (needed for expansion)
+        geocoded_user_activities = await geocode_user_activities(user_activities, customer_info)
+        logger.info(f"Geocoded {len(geocoded_user_activities)} user activities")
         
-        # Step 2.5: Expand user activities with nearby services
-        expansion_candidates = expand_all_activities(user_activities, customer_info)
+        # Step 3: Expand user activities with nearby services (now they have locations!)
+        expansion_candidates = expand_all_activities(geocoded_user_activities, customer_info)
         filtered_expansions = filter_and_deduplicate(expansion_candidates, max_per_day=3)
         logger.info(f"Generated {len(filtered_expansions)} expansion activities")
         
-        # Step 3: Merge tasks (user activities + expansions + essential tasks)
-        merged_tasks = merge_tasks(user_activities + filtered_expansions, essential_tasks)
+        # Step 4: Generate essential tasks
+        essential_tasks = generate_essential_tasks(customer_info)
+        logger.info(f"Generated {len(essential_tasks)} essential tasks")
+        
+        # Step 5: Merge tasks (geocoded user activities + expansions + essential tasks)
+        # Mark activity types
+        for task in geocoded_user_activities:
+            task["activity_type"] = "core"
+        for task in filtered_expansions:
+            task["activity_type"] = "extended"
+        for task in essential_tasks:
+            task["activity_type"] = "essential"
+        
+        merged_tasks = merge_tasks(geocoded_user_activities + filtered_expansions, essential_tasks)
         logger.info(f"Merged into {len(merged_tasks)} total tasks")
         
-        # Step 4: Smart scheduling with dependencies
+        # Step 6: Smart scheduling with dependencies
         scheduled_tasks = schedule_tasks_with_dependencies(
             merged_tasks,
             customer_info.get("arrival_date", datetime.now().strftime("%Y-%m-%d"))
         )
         logger.info(f"Scheduled {len(scheduled_tasks)} tasks")
         
-        # Step 5: Generate detailed descriptions
-        detailed_tasks = await generate_task_details_batch(scheduled_tasks, customer_info)
+        # Step 6.5: Load balancing (max 5 tasks per day)
+        balanced_tasks = balance_task_load(
+            scheduled_tasks,
+            max_tasks_per_day=5,
+            arrival_date=customer_info.get("arrival_date")
+        )
+        logger.info(f"Balanced to {len(balanced_tasks)} tasks")
+        
+        # Validate dependencies
+        if not validate_dependencies(balanced_tasks):
+            logger.error("Dependency validation failed, using unbalanced tasks")
+            balanced_tasks = scheduled_tasks
+        
+        # Step 7: Generate detailed descriptions
+        detailed_tasks = await generate_task_details_batch(balanced_tasks, customer_info)
         logger.info(f"Generated details for {len(detailed_tasks)} tasks")
         
-        # Step 6: Geocode locations
-        geocoded_tasks = await geocode_tasks_batch(detailed_tasks, customer_info)
-        logger.info(f"Geocoded {len(geocoded_tasks)} tasks")
+        # Step 8: Geocode expansion and essential tasks (user activities already geocoded)
+        geocoded_tasks = await geocode_remaining_tasks(detailed_tasks, customer_info)
+        logger.info(f"Geocoded all tasks")
         
-        # Step 7: Convert to SettlementTask format
+        # Step 9: Convert to SettlementTask format
         formatted_tasks = convert_to_settlement_task_format(geocoded_tasks, customer_info.get("arrival_date", datetime.now().strftime("%Y-%m-%d")))
         logger.info(f"Formatted {len(formatted_tasks)} tasks")
+        
+        # Step 10: Calculate plan summary
+        summary = calculate_plan_summary(geocoded_tasks)
+        logger.info(f"Plan summary: {summary}")
+        
+        # Log explanation for user
+        explanation = generate_plan_explanation(summary)
+        logger.info(f"Plan explanation: {explanation}")
         
         return formatted_tasks
         
@@ -650,11 +684,75 @@ async def generate_task_details_batch(
     return tasks
 
 
+async def geocode_user_activities(
+    user_activities: List[Dict[str, Any]],
+    customer_info: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Geocode user activities before expansion."""
+    geocoding_service = get_geocoding_service()
+    
+    for activity in user_activities:
+        # Generate location search query
+        if activity.get("name"):
+            # Try to extract location from activity name or use destination city
+            location_query = f"{activity['name']} in {customer_info.get('destination_city', 'Hong Kong')}"
+            
+            try:
+                location = await geocoding_service.geocode_address(
+                    location_query,
+                    customer_info.get("destination_city", "Hong Kong")
+                )
+                
+                if location:
+                    activity["location"] = {
+                        "name": location.get("display_name", location_query),
+                        "latitude": location["latitude"],
+                        "longitude": location["longitude"]
+                    }
+                    logger.info(f"Geocoded user activity '{activity['name']}': {activity['location']['name']}")
+            except Exception as e:
+                logger.error(f"Error geocoding user activity {activity['name']}: {e}")
+    
+    return user_activities
+
+
+async def geocode_remaining_tasks(
+    tasks: List[Dict[str, Any]],
+    customer_info: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Geocode tasks that don't have location yet (expansion and essential tasks)."""
+    geocoding_service = get_geocoding_service()
+    
+    for task in tasks:
+        # Skip if already has location
+        if task.get("location"):
+            continue
+        
+        if task.get("location_search"):
+            try:
+                location = await geocoding_service.geocode_address(
+                    task["location_search"],
+                    customer_info.get("destination_city", "Hong Kong")
+                )
+                
+                if location:
+                    task["location"] = {
+                        "name": location.get("display_name", task["location_search"]),
+                        "latitude": location["latitude"],
+                        "longitude": location["longitude"]
+                    }
+                    logger.info(f"Geocoded task '{task['name']}': {task['location']['name']}")
+            except Exception as e:
+                logger.error(f"Error geocoding task {task['name']}: {e}")
+    
+    return tasks
+
+
 async def geocode_tasks_batch(
     tasks: List[Dict[str, Any]],
     customer_info: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
-    """Geocode all tasks with location information."""
+    """Geocode all tasks with location information (legacy function, kept for compatibility)."""
     geocoding_service = get_geocoding_service()
     
     for task in tasks:
