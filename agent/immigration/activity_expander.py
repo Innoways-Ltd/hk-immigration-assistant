@@ -117,10 +117,40 @@ def generate_expansion_candidates(
     # Analyze time window
     time_window = analyze_time_window(main_activity)
     
-    # Get main activity location
+    # Get main activity location or use fallback
     main_location = main_activity.get("location")
+    
+    # If no location, use temporary accommodation or office as fallback
     if not main_location:
-        logger.warning(f"Main activity '{main_activity['name']}' has no location")
+        # Try to get temporary accommodation location
+        temp_accommodation = customer_info.get("temporary_accommodation")
+        office_location = customer_info.get("office_location")
+        
+        if temp_accommodation:
+            main_location = {
+                "name": temp_accommodation,
+                "latitude": customer_info.get("temp_accommodation_coordinates", (22.2770, 114.1720))[0],
+                "longitude": customer_info.get("temp_accommodation_coordinates", (22.2770, 114.1720))[1]
+            }
+            logger.info(f"Using temporary accommodation as fallback location for '{main_activity['name']}'")
+        elif office_location:
+            main_location = {
+                "name": office_location,
+                "latitude": customer_info.get("office_coordinates", (22.2770, 114.1720))[0],
+                "longitude": customer_info.get("office_coordinates", (22.2770, 114.1720))[1]
+            }
+            logger.info(f"Using office location as fallback for '{main_activity['name']}'")
+        else:
+            # Last resort: use city center
+            main_location = {
+                "name": customer_info.get("destination_city", "Hong Kong"),
+                "latitude": 22.2770,
+                "longitude": 114.1720
+            }
+            logger.info(f"Using city center as fallback location for '{main_activity['name']}'")
+    
+    if not main_location:
+        logger.warning(f"Could not determine location for '{main_activity['name']}'")
         return []
     
     # Generate candidates

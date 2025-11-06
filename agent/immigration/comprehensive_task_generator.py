@@ -478,6 +478,17 @@ If no specific activities mentioned, return empty array: []
             content = content.split("```")[1].split("```")[0].strip()
             
         activities = json.loads(content)
+        
+        # Add type and date fields for expansion logic
+        for activity in activities:
+            activity["type"] = "core"  # User activities are core activities
+            if activity.get("preferred_date"):
+                activity["date"] = activity["preferred_date"]
+            else:
+                # Default to arrival date + 5 days if no date specified
+                arrival_date = datetime.strptime(customer_info.get("arrival_date", datetime.now().strftime("%Y-%m-%d")), "%Y-%m-%d")
+                activity["date"] = (arrival_date + timedelta(days=5)).strftime("%Y-%m-%d")
+        
         return activities if isinstance(activities, list) else []
         
     except Exception as e:
