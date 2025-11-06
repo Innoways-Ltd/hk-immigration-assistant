@@ -14,24 +14,14 @@ logging.basicConfig(
 from fastapi import FastAPI
 import uvicorn
 from copilotkit.integrations.fastapi import add_fastapi_endpoint
-from copilotkit import CopilotKitRemoteEndpoint, LangGraphAGUIAgent
+from copilotkit import CopilotKitRemoteEndpoint, LangGraphAgent
 from immigration.agent import graph
-
-
-# Workaround for CopilotKit bug: LangGraphAGUIAgent missing dict_repr method
-class FixedLangGraphAGUIAgent(LangGraphAGUIAgent):
-    def dict_repr(self):
-        """Return dictionary representation for CopilotKit SDK compatibility"""
-        return {
-            "name": self.name if hasattr(self, 'name') else "immigration",
-            "description": self.description if hasattr(self, 'description') else "",
-        }
 
 
 app = FastAPI()
 sdk = CopilotKitRemoteEndpoint(
     agents=[
-        FixedLangGraphAGUIAgent(
+        LangGraphAgent(
             name="immigration",
             description="Helps new immigrants settle into Hong Kong by creating personalized settlement plans.",
             graph=graph,
