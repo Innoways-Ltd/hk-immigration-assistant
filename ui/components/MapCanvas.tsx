@@ -127,14 +127,25 @@ export function MapCanvas({ className }: MapCanvasProps) {
   // Use a stable key for MapContainer to prevent remount issues
   const mapKey = settlementPlan?.id || "default-map";
 
+  // Don't render map until we have valid center coordinates
+  if (!settlementPlan || !settlementPlan.center_latitude || !settlementPlan.center_longitude) {
+    return (
+      <div className="relative w-full h-full flex items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <p className="text-gray-500">Loading map...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
 		<div className="relative w-full h-full">
 			<MapContainer
 				key={mapKey}
 				className={cn("w-screen h-screen", className)}
 				style={{ zIndex: 0 }}
-				center={[0, 0]}
-				zoom={1}
+				center={[settlementPlan.center_latitude, settlementPlan.center_longitude]}
+				zoom={settlementPlan.zoom || 13}
 				zoomAnimationThreshold={100}
 				zoomControl={false}
 			>

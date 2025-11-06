@@ -87,6 +87,23 @@ def _generate_arrival_core_tasks(
     
     # Check-in to temporary accommodation - CORE
     temp_days = customer_info.get("temporary_accommodation_days", 7)
+    
+    # Determine temporary accommodation location based on user's preferred areas
+    preferred_areas = customer_info.get("preferred_areas", [])
+    temp_area = preferred_areas[0] if preferred_areas else "Wan Chai"
+    
+    # Default coordinates for common Hong Kong areas
+    area_coords = {
+        "Wan Chai": (22.2783, 114.1747),
+        "Sheung Wan": (22.2850, 114.1550),
+        "Central": (22.2810, 114.1580),
+        "Causeway Bay": (22.2800, 114.1850),
+        "Tsim Sha Tsui": (22.2950, 114.1720),
+    }
+    
+    # Get coordinates for the area (default to Wan Chai if not found)
+    temp_lat, temp_lng = area_coords.get(temp_area, (22.2783, 114.1747))
+    
     tasks.append({
         "id": str(uuid.uuid4()),
         "title": "Check-in to Temporary Accommodation",
@@ -97,7 +114,16 @@ def _generate_arrival_core_tasks(
         "core_activity_id": None,
         "relevance_score": None,
         "recommendation_reason": None,
-        "location": None,  # Will be geocoded based on user's choice
+        "location": {
+            "id": "temp-accommodation",
+            "name": f"Temporary Accommodation in {temp_area}",
+            "address": f"{temp_area}, Hong Kong",
+            "latitude": temp_lat,
+            "longitude": temp_lng,
+            "rating": 4.0,
+            "type": "accommodation",
+            "description": f"Serviced apartment or hotel in {temp_area}"
+        },
         "documents_needed": ["Passport", "Booking confirmation"],
         "estimated_duration": "30 minutes",
         "status": "pending",
@@ -143,6 +169,23 @@ def _generate_housing_core_tasks(
     preferred_areas = customer_info.get("preferred_areas", [])
     areas_str = ", ".join(preferred_areas) if preferred_areas else "near office"
     
+    # Determine property viewing location based on user's preferred areas
+    viewing_area = preferred_areas[0] if preferred_areas else "Wan Chai"
+    
+    # Default coordinates for common Hong Kong residential areas
+    area_coords = {
+        "Wan Chai": (22.2783, 114.1747),
+        "Sheung Wan": (22.2850, 114.1550),
+        "Central": (22.2810, 114.1580),
+        "Causeway Bay": (22.2800, 114.1850),
+        "Tsim Sha Tsui": (22.2950, 114.1720),
+        "Admiralty": (22.2780, 114.1650),
+        "Mid-Levels": (22.2750, 114.1500),
+    }
+    
+    # Get coordinates for the viewing area (default to Wan Chai if not found)
+    viewing_lat, viewing_lng = area_coords.get(viewing_area, (22.2783, 114.1747))
+    
     tasks.append({
         "id": str(uuid.uuid4()),
         "title": "Property Viewing - First Batch",
@@ -153,7 +196,16 @@ def _generate_housing_core_tasks(
         "core_activity_id": None,
         "relevance_score": None,
         "recommendation_reason": None,
-        "location": None,  # Will be geocoded based on properties
+        "location": {
+            "id": "property-viewing-area",
+            "name": f"Property Viewing in {areas_str}",
+            "address": f"{areas_str}, Hong Kong",
+            "latitude": viewing_lat,
+            "longitude": viewing_lng,
+            "rating": 4.0,
+            "type": "residential",
+            "description": f"Residential area for property viewing in {viewing_area}"
+        },
         "documents_needed": ["Passport", "Employment letter", "Proof of income"],
         "estimated_duration": "3-4 hours",
         "status": "pending",
@@ -188,7 +240,16 @@ def _generate_identity_core_tasks(
         "core_activity_id": None,
         "relevance_score": None,
         "recommendation_reason": None,
-        "location": None,  # Will be geocoded based on local immigration office
+        "location": {
+            "id": "immigration-dept",
+            "name": "Immigration Department",
+            "address": "Immigration Tower, 7 Gloucester Road, Wan Chai",
+            "latitude": 22.2783,
+            "longitude": 114.1747,
+            "rating": 3.5,
+            "type": "government",
+            "description": "Hong Kong Immigration Department Headquarters"
+        },
         "documents_needed": ["Passport", "Visa", "Employment letter", "Proof of address"],
         "estimated_duration": "1-2 hours",
         "status": "pending",
@@ -229,7 +290,16 @@ def _generate_identity_core_tasks(
         "core_activity_id": None,
         "relevance_score": None,
         "recommendation_reason": None,
-        "location": None,  # Will be geocoded based on nearest bank
+        "location": {
+            "id": "central-banking",
+            "name": "Central Banking District",
+            "address": "Central, Hong Kong",
+            "latitude": 22.2810,
+            "longitude": 114.1580,
+            "rating": 4.0,
+            "type": "banking",
+            "description": "Major banking area with HSBC, Standard Chartered, Bank of China, and other major banks"
+        },
         "documents_needed": ["Passport", "Resident ID (if available)", "Proof of address", "Employment letter"],
         "estimated_duration": "1-2 hours",
         "status": "pending",
@@ -265,7 +335,16 @@ def _generate_daily_life_core_tasks(
         "core_activity_id": None,
         "relevance_score": None,
         "recommendation_reason": None,
-        "location": None,  # Will be geocoded
+        "location": {
+            "id": "mobile-shop-causeway-bay",
+            "name": "Mobile Service Shop - Causeway Bay",
+            "address": "Causeway Bay, Hong Kong",
+            "latitude": 22.2800,
+            "longitude": 114.1850,
+            "rating": 4.2,
+            "type": "retail",
+            "description": "Mobile carrier service centers (CSL, 3HK, China Mobile) available in major shopping areas"
+        },
         "documents_needed": ["Passport"],
         "estimated_duration": "30 minutes",
         "status": "pending",
@@ -283,7 +362,16 @@ def _generate_daily_life_core_tasks(
         "core_activity_id": None,
         "relevance_score": None,
         "recommendation_reason": None,
-        "location": None,  # Will be geocoded
+        "location": {
+            "id": "mtr-station-central",
+            "name": "MTR Station - Central",
+            "address": "Central MTR Station, Hong Kong",
+            "latitude": 22.2810,
+            "longitude": 114.1580,
+            "rating": 4.5,
+            "type": "transportation",
+            "description": "Purchase Octopus Card at any MTR station customer service center"
+        },
         "documents_needed": [],
         "estimated_duration": "15 minutes",
         "status": "pending",
