@@ -83,6 +83,7 @@ export function MapCanvas({ className }: MapCanvasProps) {
 
   // Get IDs of focused locations for highlighting (use useMemo to avoid recreating on every render)
   const focusedLocationIds = useMemo(() => {
+    console.log('[MAP DEBUG] Focused locations:', focusedLocations.length, focusedLocations.map(l => `${l.name} (${l.id})`));
     return new Set(focusedLocations.map(loc => loc.id));
   }, [focusedLocations]);
 
@@ -125,6 +126,11 @@ export function MapCanvas({ className }: MapCanvasProps) {
             {settlementPlan.service_locations.map((place, i) => {
               const isFocused = focusedLocationIds.has(place.id);
               const isVisible = focusedLocations.length === 0 || isFocused;
+              
+              if (i === 0) {
+                console.log('[MAP DEBUG] Total service locations:', settlementPlan.service_locations.length);
+                console.log('[MAP DEBUG] Focused location IDs:', Array.from(focusedLocationIds));
+              }
               
               // Use stable key based on place.id only (don't include state to avoid remounting)
               const markerKey = `marker-${place.id}-${i}`;

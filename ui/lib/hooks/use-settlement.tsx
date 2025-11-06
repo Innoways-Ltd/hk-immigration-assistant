@@ -80,6 +80,10 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
     // If hovering on a specific task, show only that task's location
     if (hoveredTaskId) {
       const task = state.settlement_plan.tasks?.find((t: SettlementTask) => t.id === hoveredTaskId);
+      console.log('[DEBUG] Hovered task:', task?.title, 'Has location:', !!task?.location);
+      if (task?.location) {
+        console.log('[DEBUG] Task location:', task.location.name, 'Lat:', task.location.latitude, 'Lng:', task.location.longitude);
+      }
       if (task && task.location) {
         return [task.location];
       }
@@ -95,7 +99,7 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
         if (!dayMatch) return false;
         const taskDay = parseInt(dayMatch[1]);
         const matches = taskDay === hoveredDay;
-        console.log(`[DEBUG] Task "${task.title}" day_range="${task.day_range}" taskDay=${taskDay} matches=${matches}`);
+        console.log(`[DEBUG] Task "${task.title}" day_range="${task.day_range}" taskDay=${taskDay} matches=${matches} hasLocation=${!!task.location}`);
         return matches;
       }) || [];
       console.log('[DEBUG] Tasks on day:', tasksOnDay.length);
@@ -104,6 +108,7 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
         .map((task: SettlementTask) => task.location)
         .filter((loc): loc is ServiceLocation => loc !== null && loc !== undefined);
 
+      console.log('[DEBUG] Locations found on day', hoveredDay, ':', locations.length, locations.map(l => l?.name));
       return locations;
     }
 
