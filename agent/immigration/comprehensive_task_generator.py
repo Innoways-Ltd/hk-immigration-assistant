@@ -4,6 +4,7 @@ Generates a complete 30-day settlement plan with essential tasks across 4 phases
 """
 
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import json
@@ -395,7 +396,7 @@ async def generate_comprehensive_tasks(
         # Step 4: Smart scheduling with dependencies
         scheduled_tasks = schedule_tasks_with_dependencies(
             merged_tasks,
-            customer_info.arrival_date
+            customer_info.get("arrival_date", datetime.now().strftime("%Y-%m-%d"))
         )
         logger.info(f"Scheduled {len(scheduled_tasks)} tasks")
         
@@ -428,7 +429,8 @@ async def extract_user_activities(
     """Extract activities mentioned by user in conversation."""
     try:
         llm = AzureChatOpenAI(
-            model="gpt-4o",
+            azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
             temperature=0,
             streaming=False
         )
