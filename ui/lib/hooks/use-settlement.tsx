@@ -81,10 +81,19 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
     if (hoveredTaskId) {
       const task = state.settlement_plan.tasks?.find((t: SettlementTask) => t.id === hoveredTaskId);
       console.log('[DEBUG] Hovered task:', task?.title, 'Has location:', !!task?.location);
+      
       if (task?.location) {
-        console.log('[DEBUG] Task location:', task.location.name, 'Lat:', task.location.latitude, 'Lng:', task.location.longitude);
-      }
-      if (task && task.location) {
+        // Validate location has required fields
+        if (!task.location.id) {
+          console.warn('[DEBUG] Task location missing id:', task.location.name);
+          return [];
+        }
+        if (typeof task.location.latitude !== 'number' || typeof task.location.longitude !== 'number') {
+          console.warn('[DEBUG] Task location has invalid coordinates:', task.location.name, task.location.latitude, task.location.longitude);
+          return [];
+        }
+        
+        console.log('[DEBUG] Task location:', task.location.name, 'ID:', task.location.id, 'Lat:', task.location.latitude, 'Lng:', task.location.longitude);
         return [task.location];
       }
       return [];
@@ -106,9 +115,21 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
 
       const locations = tasksOnDay
         .map((task: SettlementTask) => task.location)
-        .filter((loc): loc is ServiceLocation => loc !== null && loc !== undefined);
+        .filter((loc): loc is ServiceLocation => {
+          // Ensure location exists and has required fields
+          if (!loc) return false;
+          if (!loc.id) {
+            console.warn('[DEBUG] Location missing id:', loc.name);
+            return false;
+          }
+          if (typeof loc.latitude !== 'number' || typeof loc.longitude !== 'number') {
+            console.warn('[DEBUG] Location has invalid coordinates:', loc.name, loc.latitude, loc.longitude);
+            return false;
+          }
+          return true;
+        });
 
-      console.log('[DEBUG] Locations found on day', hoveredDay, ':', locations.length, locations.map(l => l?.name));
+      console.log('[DEBUG] Locations found on day', hoveredDay, ':', locations.length, locations.map(l => `${l.name} (${l.id})`));
       return locations;
     }
 
@@ -121,7 +142,19 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
       
       const day1Locations = day1Tasks
         .map((task: SettlementTask) => task.location)
-        .filter((loc): loc is ServiceLocation => loc !== null && loc !== undefined);
+        .filter((loc): loc is ServiceLocation => {
+          // Ensure location exists and has required fields
+          if (!loc) return false;
+          if (!loc.id) {
+            console.warn('[DEBUG] Day 1 location missing id:', loc.name);
+            return false;
+          }
+          if (typeof loc.latitude !== 'number' || typeof loc.longitude !== 'number') {
+            console.warn('[DEBUG] Day 1 location has invalid coordinates:', loc.name, loc.latitude, loc.longitude);
+            return false;
+          }
+          return true;
+        });
       
       if (day1Locations.length > 0) {
         return day1Locations;
