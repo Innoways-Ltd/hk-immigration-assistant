@@ -11,6 +11,7 @@ import json
 from langchain_openai import AzureChatOpenAI
 from immigration.state import CustomerInfo
 from immigration.geocoding_service import get_geocoding_service
+from immigration.activity_expander import expand_all_activities, filter_and_deduplicate
 
 logger = logging.getLogger(__name__)
 
@@ -389,8 +390,13 @@ async def generate_comprehensive_tasks(
         essential_tasks = generate_essential_tasks(customer_info)
         logger.info(f"Generated {len(essential_tasks)} essential tasks")
         
-        # Step 3: Merge tasks (user activities override essential tasks)
-        merged_tasks = merge_tasks(user_activities, essential_tasks)
+        # Step 2.5: Expand user activities with nearby services
+        expansion_candidates = expand_all_activities(user_activities, customer_info)
+        filtered_expansions = filter_and_deduplicate(expansion_candidates, max_per_day=3)
+        logger.info(f"Generated {len(filtered_expansions)} expansion activities")
+        
+        # Step 3: Merge tasks (user activities + expansions + essential tasks)
+        merged_tasks = merge_tasks(user_activities + filtered_expansions, essential_tasks)
         logger.info(f"Merged into {len(merged_tasks)} total tasks")
         
         # Step 4: Smart scheduling with dependencies
@@ -436,7 +442,7 @@ async def extract_user_activities(
         )
         
         conversation_text = "\n".join([
-            f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+            f"{getattr(msg, 'type', 'user')}: {getattr(msg, 'content', '')}"
             for msg in messages[-10:]  # Last 10 messages
         ])
         
