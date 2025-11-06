@@ -1,8 +1,15 @@
 """Hong Kong Immigration Settlement Assistant Server"""
 
 import os
+import logging
 from dotenv import load_dotenv
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 from fastapi import FastAPI
 import uvicorn
