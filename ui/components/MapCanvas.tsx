@@ -83,8 +83,30 @@ export function MapCanvas({ className }: MapCanvasProps) {
 
   // Get IDs of focused locations for highlighting (use useMemo to avoid recreating on every render)
   const focusedLocationIds = useMemo(() => {
+    console.log('[MAP DEBUG] Focused locations:', focusedLocations.length, focusedLocations.map(l => `${l.name} (${l.id})`));
     return new Set(focusedLocations.map(loc => loc.id));
   }, [focusedLocations]);
+
+  // Merge service_locations with focused locations to ensure all focused locations are rendered
+  const allLocations = useMemo(() => {
+    if (!settlementPlan?.service_locations) return [];
+    
+    const locationMap = new Map();
+    
+    // First, add all service locations
+    settlementPlan.service_locations.forEach(loc => {
+      locationMap.set(loc.id, loc);
+    });
+    
+    // Then, add focused locations (will override if ID matches, or add new ones)
+    focusedLocations.forEach(loc => {
+      if (!locationMap.has(loc.id)) {
+        locationMap.set(loc.id, loc);
+      }
+    });
+    
+    return Array.from(locationMap.values());
+  }, [settlementPlan?.service_locations, focusedLocations]);
 
   // Use a stable key for MapContainer to prevent remount issues
   const mapKey = settlementPlan?.id || "default-map";
@@ -108,12 +130,12 @@ export function MapCanvas({ className }: MapCanvasProps) {
         {/* Map updater component */}
         <MapUpdater />
 
-        {settlementPlan && settlementPlan.service_locations && (
+        {settlementPlan && allLocations.length > 0 && (
           <>
             {/* Draw path connecting focused locations or all locations */}
-            {(focusedLocations.length > 1 ? focusedLocations : settlementPlan.service_locations).length > 1 && (
+            {(focusedLocations.length > 1 ? focusedLocations : allLocations).length > 1 && (
               <Polyline
-                positions={(focusedLocations.length > 1 ? focusedLocations : settlementPlan.service_locations).map(loc => [loc.latitude, loc.longitude])}
+                positions={(focusedLocations.length > 1 ? focusedLocations : allLocations).map(loc => [loc.latitude, loc.longitude])}
                 color={focusedLocations.length > 0 ? "#ef4444" : "#3b82f6"}
                 weight={focusedLocations.length > 0 ? 4 : 3}
                 opacity={focusedLocations.length > 0 ? 0.8 : 0.6}
@@ -121,10 +143,19 @@ export function MapCanvas({ className }: MapCanvasProps) {
               />
             )}
             
-            {/* Markers for service locations */}
-            {settlementPlan.service_locations.map((place, i) => {
+            {/* Markers for all locations (service + focused) */}
+            {allLocations.map((place, i) => {
               const isFocused = focusedLocationIds.has(place.id);
               const isVisible = focusedLocations.length === 0 || isFocused;
+              
+              if (i === 0) {
+                console.log('[MAP DEBUG] Total locations to render:', allLocations.length);
+                console.log('[MAP DEBUG] Focused location IDs:', Array.from(focusedLocationIds));
+                console.log('[MAP DEBUG] Visible markers:', allLocations.filter((_, idx) => {
+                  const focused = focusedLocationIds.has(allLocations[idx].id);
+                  return focusedLocations.length === 0 || focused;
+                }).length);
+              }
               
               // Use stable key based on place.id only (don't include state to avoid remounting)
               const markerKey = `marker-${place.id}-${i}`;
