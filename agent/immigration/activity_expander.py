@@ -84,12 +84,18 @@ def analyze_time_window(main_activity: Dict[str, Any]) -> Dict[str, Any]:
     # Determine if we can expand on same day
     can_expand_same_day = estimated_end_hour < 17  # Before 5 PM
     
+    # Calculate day_offset for expansion
+    expansion_day_offset = main_activity.get("day_offset", 0)
+    if not can_expand_same_day:
+        expansion_day_offset += 1
+    
     return {
         "date": main_activity["date"],
         "estimated_start_hour": estimated_start_hour,
         "estimated_end_hour": estimated_end_hour,
         "can_expand_same_day": can_expand_same_day,
-        "expansion_date": main_activity["date"] if can_expand_same_day else (activity_date + timedelta(days=1)).strftime("%Y-%m-%d")
+        "expansion_date": main_activity["date"] if can_expand_same_day else (activity_date + timedelta(days=1)).strftime("%Y-%m-%d"),
+        "expansion_day_offset": expansion_day_offset
     }
 
 
@@ -169,7 +175,7 @@ def generate_expansion_candidates(
             "priority": service["priority"],
             "duration_hours": service["duration_hours"],
             "location_type": service["type"],
-            "location_search": f"{service['type']} near {main_location.get('name', '')}",  # Changed from search_query
+            "location_search": f"{service['type']} near {main_location.get('name', '')}",
             "search_center": {
                 "latitude": main_location.get("latitude"),
                 "longitude": main_location.get("longitude")
@@ -177,6 +183,7 @@ def generate_expansion_candidates(
             "radius_km": expansion_rule["radius_km"],
             "relevance_score": relevance_score,
             "expansion_date": time_window["expansion_date"],
+            "day_offset": time_window["expansion_day_offset"],  # FIXED: Add day_offset
             "parent_activity": main_activity["name"],
             "dependencies": [main_activity["name"]]  # Depends on main activity
         }
