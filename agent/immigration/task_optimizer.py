@@ -9,16 +9,131 @@ Implements intelligent optimization for settlement tasks:
 """
 
 import logging
-from typing import List, Dict, Any
+import math
+from typing import List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
 
+def calculate_distance(loc1: Dict[str, float], loc2: Dict[str, float]) -> float:
+    """
+    Calculate distance between two locations using Haversine formula.
+    
+    Args:
+        loc1: Location 1 with latitude and longitude
+        loc2: Location 2 with latitude and longitude
+        
+    Returns:
+        Distance in kilometers
+    """
+    if not loc1 or not loc2:
+        return float('inf')
+    
+    lat1 = loc1.get('latitude')
+    lon1 = loc1.get('longitude')
+    lat2 = loc2.get('latitude')
+    lon2 = loc2.get('longitude')
+    
+    if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+        return float('inf')
+    
+    # Haversine formula
+    R = 6371  # Earth's radius in km
+    
+    lat1_rad = math.radians(lat1)
+    lat2_rad = math.radians(lat2)
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lon = math.radians(lon2 - lon1)
+    
+    a = math.sin(delta_lat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(delta_lon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    
+    return R * c
+
+
+def optimize_geographic_clustering(
+    tasks: List[Dict[str, Any]],
+    max_distance_km: float = 5.0
+) -> List[Dict[str, Any]]:
+    """
+    Optimize task scheduling by clustering geographically close tasks on the same day.
+    
+    This function groups tasks that are within max_distance_km of each other
+    to minimize travel time and improve convenience.
+    
+    Args:
+        tasks: List of tasks with location information
+        max_distance_km: Maximum distance (km) to consider tasks as "nearby"
+        
+    Returns:
+        Optimized task list with improved geographic clustering
+    """
+    if not tasks:
+        return tasks
+    
+    logger.info(f"Starting geographic clustering optimization with max_distance={max_distance_km}km")
+    
+    # Group tasks by day
+    tasks_by_day = defaultdict(list)
+    for task in tasks:
+        day_offset = task.get("day_offset", 0)
+        tasks_by_day[day_offset].append(task)
+    
+    optimized_tasks = []
+    
+    # For each day, sort tasks by geographic proximity
+    for day, day_tasks in tasks_by_day.items():
+        if len(day_tasks) <= 1:
+            optimized_tasks.extend(day_tasks)
+            continue
+        
+        # Separate tasks with and without locations
+        tasks_with_location = [t for t in day_tasks if t.get("location")]
+        tasks_without_location = [t for t in day_tasks if not t.get("location")]
+        
+        if not tasks_with_location:
+            optimized_tasks.extend(day_tasks)
+            continue
+        
+        # Sort tasks by geographic clustering
+        # Start with the first task (usually the most important)
+        clustered_tasks = [tasks_with_location[0]]
+        remaining_tasks = tasks_with_location[1:]
+        
+        # Greedy algorithm: Always add the nearest task to the cluster
+        while remaining_tasks:
+            last_task = clustered_tasks[-1]
+            last_location = last_task.get("location")
+            
+            # Find the nearest task
+            nearest_task = None
+            nearest_distance = float('inf')
+            
+            for task in remaining_tasks:
+                task_location = task.get("location")
+                distance = calculate_distance(last_location, task_location)
+                
+                if distance < nearest_distance:
+                    nearest_distance = distance
+                    nearest_task = task
+            
+            if nearest_task:
+                clustered_tasks.append(nearest_task)
+                remaining_tasks.remove(nearest_task)
+                logger.info(f"Day {day}: Clustered '{nearest_task['name']}' (distance: {nearest_distance:.2f}km from previous task)")
+        
+        # Add tasks without location at the end
+        optimized_tasks.extend(clustered_tasks + tasks_without_location)
+    
+    logger.info(f"Geographic clustering complete: optimized {len(tasks)} tasks")
+    return optimized_tasks
+
+
 def balance_task_load(
     tasks: List[Dict[str, Any]],
-    max_tasks_per_day: int = 5,
+    max_tasks_per_day: int = 4,
     arrival_date: str = None
 ) -> List[Dict[str, Any]]:
     """
@@ -26,7 +141,7 @@ def balance_task_load(
     
     Args:
         tasks: List of scheduled tasks
-        max_tasks_per_day: Maximum number of tasks allowed per day
+        max_tasks_per_day: Maximum number of tasks allowed per day (default: 4)
         arrival_date: Arrival date in YYYY-MM-DD format
         
     Returns:

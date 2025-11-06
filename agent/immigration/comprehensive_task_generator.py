@@ -12,7 +12,13 @@ from langchain_openai import AzureChatOpenAI
 from immigration.state import CustomerInfo
 from immigration.geocoding_service import get_geocoding_service
 from immigration.activity_expander import expand_all_activities, filter_and_deduplicate
-from immigration.task_optimizer import balance_task_load, validate_dependencies, calculate_plan_summary, generate_plan_explanation
+from immigration.task_optimizer import (
+    balance_task_load, 
+    validate_dependencies, 
+    calculate_plan_summary, 
+    generate_plan_explanation,
+    optimize_geographic_clustering
+)
 
 logger = logging.getLogger(__name__)
 
@@ -423,10 +429,10 @@ async def generate_comprehensive_tasks(
         )
         logger.info(f"Scheduled {len(scheduled_tasks)} tasks")
         
-        # Step 6.5: Load balancing (max 5 tasks per day)
+        # Step 6.5: Load balancing (max 4 tasks per day)
         balanced_tasks = balance_task_load(
             scheduled_tasks,
-            max_tasks_per_day=5,
+            max_tasks_per_day=4,  # Reduced from 5 to 4 for better user experience
             arrival_date=customer_info.get("arrival_date")
         )
         logger.info(f"Balanced to {len(balanced_tasks)} tasks")
@@ -436,8 +442,15 @@ async def generate_comprehensive_tasks(
             logger.error("Dependency validation failed, using unbalanced tasks")
             balanced_tasks = scheduled_tasks
         
+        # Step 6.6: Geographic clustering optimization
+        clustered_tasks = optimize_geographic_clustering(
+            balanced_tasks,
+            max_distance_km=5.0
+        )
+        logger.info(f"Optimized geographic clustering for {len(clustered_tasks)} tasks")
+        
         # Step 7: Generate detailed descriptions
-        detailed_tasks = await generate_task_details_batch(balanced_tasks, customer_info)
+        detailed_tasks = await generate_task_details_batch(clustered_tasks, customer_info)
         logger.info(f"Generated details for {len(detailed_tasks)} tasks")
         
         # Step 8: Geocode expansion and essential tasks (user activities already geocoded)
@@ -480,7 +493,7 @@ async def extract_user_activities(
         )
         
         conversation_text = "\n".join([
-            f"{getattr(msg, 'type', 'user')}: {getattr(msg, 'content', '')}"
+            f"{msg.get('role', 'user') if isinstance(msg, dict) else getattr(msg, 'type', 'user')}: {msg.get('content', '') if isinstance(msg, dict) else getattr(msg, 'content', '')}"
             for msg in messages[-10:]  # Last 10 messages
         ])
         
@@ -795,22 +808,26 @@ def convert_to_settlement_task_format(tasks: List[Dict[str, Any]], arrival_date:
         # Calculate date string
         try:
             arrival_dt = datetime.fromisoformat(arrival_date)
-            task_date = arrival_dt + timedelta(days=task.get("day", 1) - 1)
+            day_offset = task.get("day_offset", task.get("day", 1) - 1)
+            task_date = arrival_dt + timedelta(days=day_offset)
             date_str = task_date.strftime("%b %d")
-            day_range = f"Day {task['day']} ({date_str})"
+            day_range = f"Day {day_offset + 1} ({date_str})"
         except:
-            day_range = f"Day {task.get('day', 1)}"
+            day_offset = task.get("day_offset", 0)
+            day_range = f"Day {day_offset + 1}"
         
         formatted_task = {
             "id": f"task_{idx:03d}",
             "title": task.get("name", "Task"),
             "description": task.get("description", ""),
             "day_range": day_range,
+            "day_offset": day_offset,
             "priority": "high" if task.get("priority", "P1").startswith("P0") or task.get("priority", "P1").startswith("P1") else "medium",
             "location": task.get("location"),
             "estimated_duration": f"{task.get('duration_hours', 2)} hours",
             "status": "pending",
-            "category": task.get("category", "general")
+            "category": task.get("category", "general"),
+            "activity_type": task.get("activity_type", "essential")
         }
         
         formatted_tasks.append(formatted_task)

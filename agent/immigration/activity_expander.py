@@ -68,6 +68,8 @@ def analyze_time_window(main_activity: Dict[str, Any]) -> Dict[str, Any]:
     """
     Analyze time window for expanding activities.
     
+    Important: Core activities (user-specified) will ALWAYS push expansions to next day.
+    
     Args:
         main_activity: Main activity with date and estimated time
         
@@ -81,15 +83,26 @@ def analyze_time_window(main_activity: Dict[str, Any]) -> Dict[str, Any]:
     estimated_start_hour = 10
     estimated_end_hour = estimated_start_hour + duration_hours
     
+    # IMPORTANT: Core activities (user-specified) should NOT have expansions on same day
+    is_core_activity = main_activity.get("type") == "core"
+    
     # Determine if we can expand on same day
-    can_expand_same_day = estimated_end_hour < 17  # Before 5 PM
+    # Core activities: ALWAYS push to next day
+    # Other activities: Only if they end before 5 PM
+    can_expand_same_day = (not is_core_activity) and (estimated_end_hour < 17)
     
     # Calculate day_offset for expansion
     expansion_day_offset = main_activity.get("day_offset", 0)
-    logger.info(f"Main activity '{main_activity.get('name')}' has day_offset={expansion_day_offset}")
-    if not can_expand_same_day:
+    logger.info(f"Main activity '{main_activity.get('name')}' (type={main_activity.get('type')}) has day_offset={expansion_day_offset}")
+    
+    if is_core_activity:
+        # Core activities: ALWAYS push expansions to next day
         expansion_day_offset += 1
-        logger.info(f"Cannot expand same day, incremented to day_offset={expansion_day_offset}")
+        logger.info(f"Core activity detected, pushing expansions to next day: day_offset={expansion_day_offset}")
+    elif not can_expand_same_day:
+        # Other activities: Push to next day if time doesn't permit
+        expansion_day_offset += 1
+        logger.info(f"Cannot expand same day (time constraint), incremented to day_offset={expansion_day_offset}")
     
     return {
         "date": main_activity["date"],
@@ -240,22 +253,25 @@ def evaluate_relevance(service: Dict[str, Any], customer_info: Dict[str, Any]) -
 
 
 def expand_all_activities(
-    main_activities: List[Dict[str, Any]],
+    activities: List[Dict[str, Any]],
     customer_info: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
     """
-    Expand all main activities with nearby services.
+    Expand all core activities with nearby services.
+    
+    Important: Core activities (user-specified) will NOT have expansions on the same day.
+    Expansions will be scheduled for the next day to avoid overloading important days.
     
     Args:
-        main_activities: List of main activities
-        customer_info: Customer profile
+        activities: List of activities (core and essential)
+        customer_info: Customer information and preferences
         
     Returns:
-        List of all expansion candidates
+        List of expanded activities
     """
     all_candidates = []
     
-    for activity in main_activities:
+    for activity in activities:
         if activity.get("type") == "core":
             candidates = generate_expansion_candidates(activity, customer_info)
             all_candidates.extend(candidates)
