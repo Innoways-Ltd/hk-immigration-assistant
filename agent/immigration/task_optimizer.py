@@ -51,34 +51,31 @@ def balance_task_load(
     for day in sorted_days:
         day_tasks = tasks_by_day[day]
         
-        # Separate core and extended tasks
-        core_tasks = [t for t in day_tasks if t.get("activity_type") == "core"]
+        # Separate tasks by priority
         essential_tasks = [t for t in day_tasks if t.get("activity_type") == "essential"]
+        core_tasks = [t for t in day_tasks if t.get("activity_type") == "core"]
         extended_tasks = [t for t in day_tasks if t.get("activity_type") == "extended"]
         
-        # Core and essential tasks have priority
-        priority_tasks = core_tasks + essential_tasks
+        # Priority order: essential > core > extended
+        all_tasks_sorted = essential_tasks + core_tasks + extended_tasks
         
-        if len(priority_tasks) >= max_tasks_per_day:
-            # Too many priority tasks, keep all priority, drop extended
-            rebalanced_tasks.extend(priority_tasks)
-            overflow_tasks.extend(extended_tasks)
-            logger.warning(f"Day {day} has {len(priority_tasks)} priority tasks (>= {max_tasks_per_day}), dropping {len(extended_tasks)} extended tasks")
+        # STRICT LIMIT: Take only first max_tasks_per_day tasks
+        if len(all_tasks_sorted) > max_tasks_per_day:
+            kept_tasks = all_tasks_sorted[:max_tasks_per_day]
+            overflow = all_tasks_sorted[max_tasks_per_day:]
+            
+            rebalanced_tasks.extend(kept_tasks)
+            overflow_tasks.extend(overflow)
+            
+            logger.warning(
+                f"Day {day}: Limited to {max_tasks_per_day} tasks "
+                f"({len(essential_tasks)} essential, {len(core_tasks)} core, {len(extended_tasks)} extended). "
+                f"Deferred {len(overflow)} tasks."
+            )
         else:
-            # Add priority tasks
-            rebalanced_tasks.extend(priority_tasks)
-            
-            # Add extended tasks up to limit
-            remaining_slots = max_tasks_per_day - len(priority_tasks)
-            
-            # Sort extended tasks by relevance score
-            extended_tasks.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
-            
-            rebalanced_tasks.extend(extended_tasks[:remaining_slots])
-            overflow_tasks.extend(extended_tasks[remaining_slots:])
-            
-            if len(extended_tasks) > remaining_slots:
-                logger.info(f"Day {day}: Kept {remaining_slots} extended tasks, deferred {len(extended_tasks) - remaining_slots}")
+            # All tasks fit
+            rebalanced_tasks.extend(all_tasks_sorted)
+            logger.info(f"Day {day}: {len(all_tasks_sorted)} tasks (within limit)")
     
     # Try to reschedule overflow tasks to later days
     if overflow_tasks:
