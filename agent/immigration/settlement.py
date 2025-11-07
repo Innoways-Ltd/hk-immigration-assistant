@@ -15,6 +15,7 @@ from immigration.task_generator import (
     extract_service_locations
 )
 from immigration.core_tasks_generator import generate_core_tasks
+from immigration.smart_core_task_generator import generate_smart_extended_tasks
 from immigration.plan_summarizer import generate_plan_summary
 
 @tool
@@ -78,9 +79,21 @@ async def settlement_node(state: AgentState, config: RunnableConfig):
         customer_name = tool_call["args"]["customer_name"]
         customer_info = state.get("customer_info", {})
         
-        # Generate tasks ONLY for user-specified dates in preferred_dates
+        # Generate core tasks ONLY for user-specified dates in preferred_dates
         # No default timeline, no 30-day plan, only what user explicitly requested
-        optimized_tasks = generate_core_tasks(customer_info)
+        core_tasks = generate_core_tasks(customer_info)
+        
+        # Generate smart extended activities around core tasks
+        # This provides better immigration experience by suggesting convenient services
+        # on the same day as main activities (e.g., find supermarket after home viewing)
+        extended_tasks = await generate_smart_extended_tasks(
+            core_tasks,
+            customer_info,
+            max_per_task=3  # Maximum 3 extended activities per core task
+        )
+        
+        # Combine core tasks with extended activities
+        optimized_tasks = core_tasks + extended_tasks
         
         # Get office coordinates for map centering
         office_coords = customer_info.get("office_coordinates", (22.2770, 114.1720))
