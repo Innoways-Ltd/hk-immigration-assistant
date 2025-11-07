@@ -1,7 +1,7 @@
 import { MapContainer, TileLayer, Marker, Tooltip, Polyline, useMap } from "react-leaflet";
 import { useSettlement } from "@/lib/hooks/use-settlement";
 import { useEffect, useMemo } from "react";
-import { Map, divIcon, LatLngBounds } from "leaflet";
+import { divIcon, LatLngBounds } from "leaflet";
 import { cn } from "@/lib/utils";
 import { SettlementCard } from "@/components/SettlementCard";
 import { PlaceCard } from "@/components/PlaceCard";
