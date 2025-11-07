@@ -57,7 +57,9 @@ def complete_settlement_task(task_id: str) -> dict:
 
 def calculate_plan_duration(customer_info: dict) -> int:
     """
-    Calculate the optimal plan duration based on customer information.
+    Calculate plan duration based on user-provided dates in preferred_dates.
+    Returns the number of days from arrival to the latest activity date.
+    If no dates provided, returns minimum 14 days for essential tasks.
     
     Args:
         customer_info: Customer information dictionary
@@ -65,25 +67,39 @@ def calculate_plan_duration(customer_info: dict) -> int:
     Returns:
         Number of days for the settlement plan
     """
-    # Get temporary accommodation days
-    temp_days = customer_info.get('temporary_accommodation_days')
+    arrival_date_str = customer_info.get('arrival_date')
+    preferred_dates = customer_info.get('preferred_dates', {})
     
-    # If not specified, use default based on other factors
-    if temp_days is None:
-        # Default: 30 days for comprehensive settlement
-        return 30
+    if not arrival_date_str:
+        # No arrival date, return minimum duration
+        return 14
     
-    # Plan should be at least as long as temporary accommodation
-    # But also consider minimum time needed for essential tasks
-    min_days = 14  # Minimum for HKID application (must be done within 30 days)
+    if not preferred_dates:
+        # No preferred dates, return minimum duration
+        return 14
     
-    # If temp accommodation is very short, extend plan for essential tasks
-    if temp_days < min_days:
-        return min_days
-    
-    # Otherwise, use temp accommodation days as base
-    # Add buffer for tasks that extend beyond temp accommodation
-    return temp_days + 7  # 7 days buffer for ongoing tasks
+    try:
+        arrival_date = datetime.strptime(arrival_date_str, "%Y-%m-%d")
+        
+        # Find the latest date from preferred_dates
+        latest_date = arrival_date
+        for date_str in preferred_dates.values():
+            if date_str:
+                try:
+                    activity_date = datetime.strptime(date_str, "%Y-%m-%d")
+                    if activity_date > latest_date:
+                        latest_date = activity_date
+                except:
+                    continue
+        
+        # Calculate duration from arrival to latest activity
+        duration = (latest_date - arrival_date).days + 1
+        
+        # Ensure minimum 14 days for essential tasks
+        return max(14, duration)
+    except:
+        # Fallback to minimum duration if parsing fails
+        return 14
 
 def format_day_range(start_day: int, end_day: int, arrival_date: str = None) -> str:
     """
@@ -124,7 +140,6 @@ def generate_arrival_tasks(customer_info: dict, task_id_start: int = 1) -> list[
     """Generate arrival and immediate settlement tasks (Day 1-3)."""
     
     arrival_date = customer_info.get('arrival_date')
-    temp_days = customer_info.get('temporary_accommodation_days', 30)
     
     tasks = []
     task_id = task_id_start
@@ -148,7 +163,7 @@ def generate_arrival_tasks(customer_info: dict, task_id_start: int = 1) -> list[
     tasks.append({
         "id": f"task_{task_id:03d}",
         "title": "Check-in to Temporary Accommodation",
-        "description": f"Check-in to hotel/serviced apartment for {temp_days} days",
+        "description": "Check-in to hotel/serviced apartment",
         "day_range": format_day_range(1, 1, arrival_date),
         "priority": "high",
         "location": None,

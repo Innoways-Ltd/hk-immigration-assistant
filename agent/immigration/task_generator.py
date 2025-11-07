@@ -91,7 +91,6 @@ async def generate_all_tasks_async(customer_info: dict) -> List[Dict[str, Any]]:
     This function generates tasks and geocodes them in parallel to minimize wait time.
     """
     arrival_date = customer_info.get('arrival_date')
-    temp_days = customer_info.get('temporary_accommodation_days', 30)
     office_address = customer_info.get('office_address', 'Wan Chai, Hong Kong')
     preferred_areas = customer_info.get('preferred_areas', ['Wan Chai', 'Sheung Wan'])
     has_children = customer_info.get('has_children', False)
@@ -135,7 +134,7 @@ async def generate_all_tasks_async(customer_info: dict) -> List[Dict[str, Any]]:
         },
         {
             "title": "Check-in to Temporary Accommodation",
-            "description": f"Check-in to hotel/serviced apartment for {temp_days} days",
+            "description": "Check-in to hotel/serviced apartment",
             "day_range": format_day_range(1, None, arrival_date),
             "priority": "high",
             "location_search": f"Hotel near {office_address}",
@@ -147,8 +146,8 @@ async def generate_all_tasks_async(customer_info: dict) -> List[Dict[str, Any]]:
     
     # Add housing task if plan is long enough
     if plan_duration >= 5:
-        viewing_start = min(3, temp_days - 2)
-        viewing_end = min(7, temp_days)
+        viewing_start = 3
+        viewing_end = 7
         area = preferred_areas[0] if preferred_areas else "Wan Chai"
         
         task_definitions.append({
@@ -351,11 +350,41 @@ def extract_service_locations(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any
 
 
 def calculate_plan_duration(customer_info: dict) -> int:
-    """Calculate plan duration based on temporary accommodation days."""
-    temp_days = customer_info.get('temporary_accommodation_days', 30)
+    """
+    Calculate plan duration based on user-provided dates in preferred_dates.
+    Returns the number of days from arrival to the latest activity date.
+    If no dates provided, returns minimum 14 days for essential tasks.
+    """
+    arrival_date_str = customer_info.get('arrival_date')
+    preferred_dates = customer_info.get('preferred_dates', {})
     
-    # Plan should be at least 14 days (for HKID application)
-    # and extend beyond temporary accommodation
-    plan_duration = max(14, temp_days + 7)
+    if not arrival_date_str:
+        # No arrival date, return minimum duration
+        return 14
     
-    return plan_duration
+    if not preferred_dates:
+        # No preferred dates, return minimum duration
+        return 14
+    
+    try:
+        arrival_date = datetime.fromisoformat(arrival_date_str)
+        
+        # Find the latest date from preferred_dates
+        latest_date = arrival_date
+        for date_str in preferred_dates.values():
+            if date_str:
+                try:
+                    activity_date = datetime.strptime(date_str, "%Y-%m-%d")
+                    if activity_date > latest_date:
+                        latest_date = activity_date
+                except:
+                    continue
+        
+        # Calculate duration from arrival to latest activity
+        duration = (latest_date - arrival_date).days + 1
+        
+        # Ensure minimum 14 days for essential tasks
+        return max(14, duration)
+    except:
+        # Fallback to minimum duration if parsing fails
+        return 14
