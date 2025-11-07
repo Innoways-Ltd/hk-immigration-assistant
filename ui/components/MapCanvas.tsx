@@ -11,6 +11,51 @@ export type MapCanvasProps = {
   className?: string;
 }
 
+// Component to handle user geolocation
+function UserLocationMarker() {
+  const map = useMap();
+  const { settlementPlan } = useSettlement();
+
+  useEffect(() => {
+    // Only attempt geolocation if there's no settlement plan yet
+    if (settlementPlan) return;
+
+    let isMounted = true;
+
+    // Use browser geolocation API to get user's current position
+    if ('geolocation' in navigator) {
+      console.log('[UserLocation] Attempting to get user location...');
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (!isMounted || !map) return;
+          
+          const { latitude, longitude } = position.coords;
+          console.log('[UserLocation] Got user location:', latitude, longitude);
+          
+          // Center map on user's location
+          map.setView([latitude, longitude], 15, { animate: true });
+        },
+        (error) => {
+          console.warn('[UserLocation] Geolocation error:', error.message);
+          // Keep default Hong Kong location on error
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 5000,
+          maximumAge: 300000 // 5 minutes cache
+        }
+      );
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [map, settlementPlan]);
+
+  return null;
+}
+
 // Component to handle map updates based on focused locations
 function MapUpdater() {
   const map = useMap();
@@ -127,16 +172,17 @@ export function MapCanvas({ className }: MapCanvasProps) {
   // Use a stable key for MapContainer to prevent remount issues
   const mapKey = settlementPlan?.id || "default-map";
 
-  // Don't render map until we have valid center coordinates
-  if (!settlementPlan || !settlementPlan.center_latitude || !settlementPlan.center_longitude) {
-    return (
-      <div className="relative w-full h-full flex items-center justify-center bg-gray-100">
-        <div className="text-center">
-          <p className="text-gray-500">Loading map...</p>
-        </div>
-      </div>
-    );
-  }
+  // Determine map center: use settlement plan if available, otherwise use default Hong Kong location
+  // When tasks are generated, the settlement plan will have proper coordinates
+  const mapCenter: [number, number] = useMemo(() => {
+    if (settlementPlan?.center_latitude && settlementPlan?.center_longitude) {
+      return [settlementPlan.center_latitude, settlementPlan.center_longitude];
+    }
+    // Default to Hong Kong city center (Central)
+    return [22.2810, 114.1580];
+  }, [settlementPlan]);
+
+  const mapZoom = settlementPlan?.zoom || 13;
 
   return (
 		<div className="relative w-full h-full">
@@ -144,8 +190,8 @@ export function MapCanvas({ className }: MapCanvasProps) {
 				key={mapKey}
 				className={cn("w-screen h-screen", className)}
 				style={{ zIndex: 0 }}
-				center={[settlementPlan.center_latitude, settlementPlan.center_longitude]}
-				zoom={settlementPlan.zoom || 13}
+				center={mapCenter}
+				zoom={mapZoom}
 				zoomAnimationThreshold={100}
 				zoomControl={false}
 			>
@@ -153,6 +199,9 @@ export function MapCanvas({ className }: MapCanvasProps) {
 					url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 					attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 				/>
+        
+        {/* User location tracker - only when no settlement plan */}
+        <UserLocationMarker />
         
         {/* Map updater component */}
         <MapUpdater />
