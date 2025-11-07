@@ -1,7 +1,7 @@
 import { MapContainer, TileLayer, Marker, Tooltip, Polyline, useMap } from "react-leaflet";
 import { useSettlement } from "@/lib/hooks/use-settlement";
 import { useEffect, useMemo } from "react";
-import { Map, divIcon, LatLngBounds } from "leaflet";
+import { divIcon, LatLngBounds } from "leaflet";
 import { cn } from "@/lib/utils";
 import { SettlementCard } from "@/components/SettlementCard";
 import { PlaceCard } from "@/components/PlaceCard";
@@ -11,13 +11,74 @@ export type MapCanvasProps = {
   className?: string;
 }
 
+// Component to handle user geolocation
+function UserLocationMarker() {
+  const map = useMap();
+  const { settlementPlan } = useSettlement();
+
+  useEffect(() => {
+    // Only attempt geolocation if there's no settlement plan yet
+    if (settlementPlan) return;
+
+    let isMounted = true;
+
+    // Use browser geolocation API to get user's current position
+    if ('geolocation' in navigator) {
+      console.log('[UserLocation] Attempting to get user location...');
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          if (!isMounted || !map) return;
+          
+          const { latitude, longitude } = position.coords;
+          console.log('[UserLocation] Got user location:', latitude, longitude);
+          
+          // Center map on user's location
+          map.setView([latitude, longitude], 15, { animate: true });
+        },
+        (error) => {
+          console.warn('[UserLocation] Geolocation error:', error.message);
+          // Keep default Hong Kong location on error
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 5000,
+          maximumAge: 300000 // 5 minutes cache
+        }
+      );
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [map, settlementPlan]);
+
+  return null;
+}
+
 // Component to handle map updates based on focused locations
 function MapUpdater() {
   const map = useMap();
   const { focusedLocations, settlementPlan } = useSettlement();
 
   useEffect(() => {
-    if (!map) return;
+    // Add safety check for map instance
+    if (!map) {
+      console.warn('[MapUpdater] Map instance not available');
+      return;
+    }
+    
+    // Ensure map container exists
+    try {
+      const container = map.getContainer();
+      if (!container) {
+        console.warn('[MapUpdater] Map container not found');
+        return;
+      }
+    } catch (error) {
+      console.warn('[MapUpdater] Error accessing map container:', error);
+      return;
+    }
 
     // Track if component is still mounted
     let isMounted = true;
@@ -83,20 +144,40 @@ export function MapCanvas({ className }: MapCanvasProps) {
 
   // Get IDs of focused locations for highlighting (use useMemo to avoid recreating on every render)
   const focusedLocationIds = useMemo(() => {
+    console.log('[MAP DEBUG] Focused locations:', focusedLocations.length, focusedLocations.map(l => `${l.name} (${l.id})`));
     return new Set(focusedLocations.map(loc => loc.id));
+  }, [focusedLocations]);
+
+  // Only display focused locations (Day 1 by default, or hovered day)
+  // Map should display a maximum of one day's activities at a time
+  const allLocations = useMemo(() => {
+    // Only show focused locations (filtered by day)
+    return focusedLocations;
   }, [focusedLocations]);
 
   // Use a stable key for MapContainer to prevent remount issues
   const mapKey = settlementPlan?.id || "default-map";
 
+  // Determine map center: use settlement plan if available, otherwise use default Hong Kong location
+  // When tasks are generated, the settlement plan will have proper coordinates
+  const mapCenter: [number, number] = useMemo(() => {
+    if (settlementPlan?.center_latitude && settlementPlan?.center_longitude) {
+      return [settlementPlan.center_latitude, settlementPlan.center_longitude];
+    }
+    // Default to Hong Kong city center (Central)
+    return [22.2810, 114.1580];
+  }, [settlementPlan]);
+
+  const mapZoom = settlementPlan?.zoom || 13;
+
   return (
-		<div className="">
+		<div className="relative w-full h-full">
 			<MapContainer
 				key={mapKey}
 				className={cn("w-screen h-screen", className)}
 				style={{ zIndex: 0 }}
-				center={[0, 0]}
-				zoom={1}
+				center={mapCenter}
+				zoom={mapZoom}
 				zoomAnimationThreshold={100}
 				zoomControl={false}
 			>
@@ -105,26 +186,33 @@ export function MapCanvas({ className }: MapCanvasProps) {
 					attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 				/>
         
+        {/* User location tracker - only when no settlement plan */}
+        <UserLocationMarker />
+        
         {/* Map updater component */}
         <MapUpdater />
 
-        {settlementPlan && settlementPlan.service_locations && (
+        {settlementPlan && allLocations.length > 0 && (
           <>
-            {/* Draw path connecting focused locations or all locations */}
-            {(focusedLocations.length > 1 ? focusedLocations : settlementPlan.service_locations).length > 1 && (
+            {/* Draw path connecting locations for the current day */}
+            {allLocations.length > 1 && (
               <Polyline
-                positions={(focusedLocations.length > 1 ? focusedLocations : settlementPlan.service_locations).map(loc => [loc.latitude, loc.longitude])}
-                color={focusedLocations.length > 0 ? "#ef4444" : "#3b82f6"}
-                weight={focusedLocations.length > 0 ? 4 : 3}
-                opacity={focusedLocations.length > 0 ? 0.8 : 0.6}
-                dashArray={focusedLocations.length > 0 ? undefined : "10, 10"}
+                positions={allLocations.map(loc => [loc.latitude, loc.longitude])}
+                color="#3b82f6"
+                weight={3}
+                opacity={0.7}
               />
             )}
             
-            {/* Markers for service locations */}
-            {settlementPlan.service_locations.map((place, i) => {
+            {/* Markers for focused locations only (Day 1 by default, or hovered day) */}
+            {allLocations.map((place, i) => {
               const isFocused = focusedLocationIds.has(place.id);
-              const isVisible = focusedLocations.length === 0 || isFocused;
+              const isVisible = true; // All displayed locations are visible (no need to hide)
+              
+              if (i === 0) {
+                console.log('[MAP DEBUG] Displaying locations for current day:', allLocations.length);
+                console.log('[MAP DEBUG] Locations:', allLocations.map(l => l.name));
+              }
               
               // Use stable key based on place.id only (don't include state to avoid remounting)
               const markerKey = `marker-${place.id}-${i}`;

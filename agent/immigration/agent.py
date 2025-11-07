@@ -67,6 +67,5 @@ graph_builder.add_edge("perform_settlement_node", "chat_node")
 
 # Compile the graph
 graph = graph_builder.compile(
-    interrupt_after=["settlement_node"],
     checkpointer=MemorySaver(),
 )
