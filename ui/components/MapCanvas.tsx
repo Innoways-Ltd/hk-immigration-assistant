@@ -148,26 +148,12 @@ export function MapCanvas({ className }: MapCanvasProps) {
     return new Set(focusedLocations.map(loc => loc.id));
   }, [focusedLocations]);
 
-  // Merge service_locations with focused locations to ensure all focused locations are rendered
+  // Only display focused locations (Day 1 by default, or hovered day)
+  // Map should display a maximum of one day's activities at a time
   const allLocations = useMemo(() => {
-    if (!settlementPlan?.service_locations) return [];
-    
-    const locationMap = new Map();
-    
-    // First, add all service locations
-    settlementPlan.service_locations.forEach(loc => {
-      locationMap.set(loc.id, loc);
-    });
-    
-    // Then, add focused locations (will override if ID matches, or add new ones)
-    focusedLocations.forEach(loc => {
-      if (!locationMap.has(loc.id)) {
-        locationMap.set(loc.id, loc);
-      }
-    });
-    
-    return Array.from(locationMap.values());
-  }, [settlementPlan?.service_locations, focusedLocations]);
+    // Only show focused locations (filtered by day)
+    return focusedLocations;
+  }, [focusedLocations]);
 
   // Use a stable key for MapContainer to prevent remount issues
   const mapKey = settlementPlan?.id || "default-map";
@@ -208,21 +194,25 @@ export function MapCanvas({ className }: MapCanvasProps) {
 
         {settlementPlan && allLocations.length > 0 && (
           <>
-            {/* Draw path connecting focused locations or all locations */}
-            {(focusedLocations.length > 1 ? focusedLocations : allLocations).length > 1 && (
+            {/* Draw path connecting locations for the current day */}
+            {allLocations.length > 1 && (
               <Polyline
-                positions={(focusedLocations.length > 1 ? focusedLocations : allLocations).map(loc => [loc.latitude, loc.longitude])}
-                color={focusedLocations.length > 0 ? "#ef4444" : "#3b82f6"}
-                weight={focusedLocations.length > 0 ? 4 : 3}
-                opacity={focusedLocations.length > 0 ? 0.8 : 0.6}
-                dashArray={focusedLocations.length > 0 ? undefined : "10, 10"}
+                positions={allLocations.map(loc => [loc.latitude, loc.longitude])}
+                color="#3b82f6"
+                weight={3}
+                opacity={0.7}
               />
             )}
             
-            {/* Markers for all locations (service + focused) */}
+            {/* Markers for focused locations only (Day 1 by default, or hovered day) */}
             {allLocations.map((place, i) => {
               const isFocused = focusedLocationIds.has(place.id);
-              const isVisible = focusedLocations.length === 0 || isFocused;
+              const isVisible = true; // All displayed locations are visible (no need to hide)
+              
+              if (i === 0) {
+                console.log('[MAP DEBUG] Displaying locations for current day:', allLocations.length);
+                console.log('[MAP DEBUG] Locations:', allLocations.map(l => l.name));
+              }
               
               if (i === 0) {
                 console.log('[MAP DEBUG] Total locations to render:', allLocations.length);

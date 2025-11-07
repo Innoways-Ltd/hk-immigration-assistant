@@ -134,11 +134,14 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
     }
 
     // Default: show Day 1 locations only
+    // Map should display a maximum of one day's activities at a time
     if (state.settlement_plan.tasks && state.settlement_plan.tasks.length > 0) {
       const day1Tasks = state.settlement_plan.tasks.filter((task: SettlementTask) => {
         const dayMatch = task.day_range.match(/Day (\d+)/);
         return dayMatch && parseInt(dayMatch[1]) === 1;
       });
+      
+      console.log('[DEBUG] Default view - Day 1 tasks found:', day1Tasks.length);
       
       const day1Locations = day1Tasks
         .map((task: SettlementTask) => task.location)
@@ -156,13 +159,12 @@ export const SettlementProvider = ({ children }: { children: ReactNode }) => {
           return true;
         });
       
-      if (day1Locations.length > 0) {
-        return day1Locations;
-      }
+      console.log('[DEBUG] Default view - Day 1 locations:', day1Locations.length, day1Locations.map(l => l.name));
+      return day1Locations; // Return Day 1 locations only, even if empty
     }
     
-    // Fallback: show all locations if no Day 1 tasks found
-    return state.settlement_plan.service_locations || [];
+    // No tasks yet - return empty array (don't show any pins)
+    return [];
   }, [state.settlement_plan, hoveredDay, hoveredTaskId]);
 
   // Toggle task completion
