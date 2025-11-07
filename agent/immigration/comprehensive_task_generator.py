@@ -19,6 +19,9 @@ from immigration.task_optimizer import (
     generate_plan_explanation,
     optimize_geographic_clustering
 )
+from immigration.smart_core_task_generator import generate_smart_extended_tasks
+from immigration.core_tasks_generator import generate_core_tasks
+from immigration.state import TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -406,20 +409,52 @@ async def generate_comprehensive_tasks(
         for expansion in filtered_expansions[:5]:  # Log first 5
             logger.info(f"Expansion: {expansion.get('name')} - day_offset={expansion.get('day_offset')}, parent={expansion.get('parent_activity')}")
         
-        # Step 4: Generate essential tasks
+        # Step 4: Generate core tasks (always needed, like bank account, HKID, etc.)
+        core_tasks_raw = generate_core_tasks(customer_info)
+        logger.info(f"Generated {len(core_tasks_raw)} core tasks")
+        
+        # Convert core tasks to compatible format
+        core_tasks = convert_core_tasks_format(core_tasks_raw, customer_info)
+        logger.info(f"Converted {len(core_tasks)} core tasks to compatible format")
+        
+        # Step 4.5: Use smart extended task generation for core tasks
+        # This will generate nearby activities ONLY for days with core tasks
+        smart_extended_tasks_raw = await generate_smart_extended_tasks(
+            core_tasks_raw, 
+            customer_info,
+            max_per_task=3  # Max 3 extended activities per core task
+        )
+        logger.info(f"Generated {len(smart_extended_tasks_raw)} smart extended activities")
+        
+        # Convert smart extended tasks to compatible format
+        smart_extended_tasks = convert_core_tasks_format(smart_extended_tasks_raw, customer_info)
+        logger.info(f"Converted {len(smart_extended_tasks)} smart extended tasks")
+        
+        # Step 5: Generate essential tasks (remaining tasks from knowledge base)
         essential_tasks = generate_essential_tasks(customer_info)
         logger.info(f"Generated {len(essential_tasks)} essential tasks")
         
-        # Step 5: Merge tasks (geocoded user activities + expansions + essential tasks)
+        # Step 6: Merge tasks (user activities + expansions + core tasks + smart extensions + essential)
         # Mark activity types
         for task in geocoded_user_activities:
             task["activity_type"] = "core"
+            task["task_type"] = TaskType.CORE.value
         for task in filtered_expansions:
             task["activity_type"] = "extended"
+            task["task_type"] = TaskType.EXTENDED.value
+        for task in core_tasks:
+            task["activity_type"] = "core"
+            # task_type already set by generate_core_tasks
+        for task in smart_extended_tasks:
+            task["activity_type"] = "extended"
+            # task_type already set by generate_smart_extended_tasks
         for task in essential_tasks:
             task["activity_type"] = "essential"
+            task["task_type"] = getattr(TaskType, "ESSENTIAL", TaskType.CORE).value
         
-        merged_tasks = merge_tasks(geocoded_user_activities + filtered_expansions, essential_tasks)
+        # Merge: user activities + expansions + core tasks + smart extensions + essential
+        all_tasks = geocoded_user_activities + filtered_expansions + core_tasks + smart_extended_tasks
+        merged_tasks = merge_tasks(all_tasks, essential_tasks)
         logger.info(f"Merged into {len(merged_tasks)} total tasks")
         
         # Step 6: Smart scheduling with dependencies
@@ -798,6 +833,129 @@ async def geocode_tasks_batch(
                 logger.error(f"Error geocoding task {task['name']}: {e}")
     
     return tasks
+
+
+def convert_core_tasks_format(
+    core_tasks: List[Dict[str, Any]], 
+    customer_info: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """
+    Convert core tasks from SettlementTask format to comprehensive task format.
+    
+    SettlementTask format (from core_tasks_generator.py):
+    {
+        "id": str,
+        "title": str,
+        "description": str,
+        "day_range": "Day 1" or "Day 1 (Nov 07)",
+        "priority": "high" | "medium" | "low",
+        "location": {...},
+        "documents_needed": [...],
+        "estimated_duration": "1-2 hours",
+        "status": "pending",
+        "dependencies": [...],
+        "task_type": TaskType.CORE.value or TaskType.EXTENDED.value
+    }
+    
+    Comprehensive task format (internal):
+    {
+        "name": str,
+        "description": str,
+        "day_offset": int (0-based),
+        "priority": "P0" | "P1" | "P2",
+        "location": {...},
+        "duration_hours": float,
+        "category": str,
+        "activity_type": "core" | "extended" | "essential"
+    }
+    """
+    converted = []
+    arrival_date = customer_info.get("arrival_date")
+    
+    for task in core_tasks:
+        # Extract day number from day_range
+        day_range = task.get("day_range", "Day 1")
+        try:
+            # "Day 1" or "Day 1 (Nov 07)" -> day_num=1
+            day_part = day_range.split("(")[0].strip()
+            if "-" in day_part:
+                # "Day 1-3" -> take start day
+                day_num = int(day_part.split("-")[0].replace("Day", "").strip())
+            else:
+                day_num = int(day_part.replace("Day", "").strip())
+            day_offset = day_num - 1  # Convert to 0-based
+        except:
+            day_offset = 0
+        
+        # Convert priority
+        priority_map = {
+            "high": "P0",
+            "medium": "P1",
+            "low": "P2"
+        }
+        priority = priority_map.get(task.get("priority", "medium"), "P1")
+        
+        # Extract duration hours from estimated_duration
+        duration_str = task.get("estimated_duration", "1-2 hours")
+        try:
+            # "1-2 hours" -> 1.5, "30 minutes" -> 0.5
+            if "hour" in duration_str.lower():
+                # Take average of range or single value
+                parts = duration_str.lower().replace("hours", "").replace("hour", "").strip().split("-")
+                if len(parts) == 2:
+                    duration_hours = (float(parts[0]) + float(parts[1])) / 2
+                else:
+                    duration_hours = float(parts[0])
+            elif "minute" in duration_str.lower():
+                minutes = float(duration_str.lower().replace("minutes", "").replace("minute", "").strip().split("-")[0])
+                duration_hours = minutes / 60
+            else:
+                duration_hours = 2.0  # default
+        except:
+            duration_hours = 2.0
+        
+        # Determine category from task title or type
+        title = task.get("title", "")
+        if "bank" in title.lower() or "account" in title.lower():
+            category = "banking"
+        elif "identity" in title.lower() or "hkid" in title.lower() or "id" in title.lower():
+            category = "identity"
+        elif "property" in title.lower() or "housing" in title.lower() or "accommodation" in title.lower():
+            category = "housing"
+        elif "mobile" in title.lower() or "sim" in title.lower() or "phone" in title.lower():
+            category = "communication"
+        elif "transport" in title.lower() or "octopus" in title.lower() or "mtr" in title.lower():
+            category = "transportation"
+        elif "airport" in title.lower():
+            category = "transportation"
+        elif "tax" in title.lower():
+            category = "legal"
+        elif "driver" in title.lower() or "license" in title.lower():
+            category = "legal"
+        else:
+            category = "general"
+        
+        converted_task = {
+            "id": task.get("id"),
+            "name": task.get("title"),
+            "description": task.get("description", ""),
+            "day_offset": day_offset,
+            "priority": priority,
+            "location": task.get("location"),
+            "duration_hours": duration_hours,
+            "category": category,
+            "activity_type": task.get("activity_type", "core"),
+            "task_type": task.get("task_type", TaskType.CORE.value),
+            "documents_needed": task.get("documents_needed", []),
+            "dependencies": task.get("dependencies", []),
+            "core_activity_id": task.get("core_activity_id"),
+            "relevance_score": task.get("relevance_score"),
+            "recommendation_reason": task.get("recommendation_reason")
+        }
+        
+        converted.append(converted_task)
+    
+    return converted
 
 
 def convert_to_settlement_task_format(tasks: List[Dict[str, Any]], arrival_date: str) -> List[Dict[str, Any]]:
