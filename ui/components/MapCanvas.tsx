@@ -214,6 +214,15 @@ export function MapCanvas({ className }: MapCanvasProps) {
                 console.log('[MAP DEBUG] Locations:', allLocations.map(l => l.name));
               }
               
+              if (i === 0) {
+                console.log('[MAP DEBUG] Total locations to render:', allLocations.length);
+                console.log('[MAP DEBUG] Focused location IDs:', Array.from(focusedLocationIds));
+                console.log('[MAP DEBUG] Visible markers:', allLocations.filter((_, idx) => {
+                  const focused = focusedLocationIds.has(allLocations[idx].id);
+                  return focusedLocations.length === 0 || focused;
+                }).length);
+              }
+              
               // Use stable key based on place.id only (don't include state to avoid remounting)
               const markerKey = `marker-${place.id}-${i}`;
               
