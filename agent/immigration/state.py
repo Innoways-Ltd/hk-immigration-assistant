@@ -97,3 +97,6 @@ class AgentState(MessagesState):
     search_progress: List[SearchProgress]
     planning_progress: List[PlanningProgress]
     info_confirmed: bool  # Whether customer has confirmed their information
+    order_number: Optional[str]  # Customer's order number
+    order_summary: Optional[Dict]  # Full order summary from API
+    conversation_stage: Optional[str]  # Current stage: "greeting", "order_lookup", "info_collection", "info_confirmation", "plan_creation"
