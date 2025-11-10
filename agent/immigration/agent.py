@@ -32,8 +32,8 @@ def route(state: AgentState):
             if tool_name in ["add_settlement_task", "update_settlement_task", "complete_settlement_task"]:
                 return "perform_settlement_node"
             
-            # Stay in chat node for save_customer_info and confirm_customer_info
-            if tool_name in ["save_customer_info", "confirm_customer_info"]:
+            # Stay in chat node for save_customer_info, confirm_customer_info, and fetch_order_summary
+            if tool_name in ["save_customer_info", "confirm_customer_info", "fetch_order_summary"]:
                 return "chat_node"
             
             # Unknown tool, stay in chat node

@@ -11,6 +11,26 @@ from typing import cast
 from langchain_core.tools import tool
 
 @tool
+async def fetch_order_summary(order_number: str) -> str:
+    """
+    Fetch customer order summary from the order system using order number.
+    Call this tool when user provides their order number to retrieve their booking information.
+    
+    Args:
+        order_number: The customer's order number (e.g., "HK20250504001", "file1234")
+    
+    Returns:
+        A formatted summary of the customer's order information
+    """
+    api_client = get_order_api_client()
+    order_data = await api_client.get_order_summary(order_number)
+    
+    if order_data:
+        return format_order_summary_for_display(order_data)
+    else:
+        return f"Order {order_number} not found in the system. Please check the order number and try again."
+
+@tool
 def save_customer_info(
     name: str = None,
     destination_country: str = None,
@@ -24,13 +44,15 @@ def save_customer_info(
     has_children: bool = False,
     needs_car: bool = False,
     temporary_accommodation_days: int = None,
-    preferred_dates: dict = None
+    preferred_dates: dict = None,
+    order_number: str = None
 ):
     """
-    Save customer information collected from the conversation.
+    Save customer information collected from the conversation or from order system.
     Call this tool whenever you learn new information about the customer.
     
     Args:
+        order_number: Customer's order number for reference
         preferred_dates: Dictionary of task-specific preferred dates.
             Keys should be task types (e.g., "home_viewing", "bank_account", "identity_card").
             Values should be dates in YYYY-MM-DD format.
@@ -55,6 +77,7 @@ llm = AzureChatOpenAI(
 )
 
 tools = [
+    fetch_order_summary,
     save_customer_info,
     confirm_customer_info,
     search_service_locations,
@@ -127,15 +150,42 @@ async def chat_node(state: AgentState, config: RunnableConfig):
     info_confirmed = state.get("info_confirmed", False)
     
     # Determine conversation stage
+    has_order_number = customer_info.get("order_number") is not None
     has_min_info = has_minimum_info(customer_info)
     
-    if not has_min_info:
+    if not has_order_number:
+        # Stage 0: Welcome and ask for order number
+        system_message = f"""
+You are a warm and professional immigration settlement assistant.
+
+**Current Stage: Welcome & Order Number Collection**
+
+**Your Task:**
+1. **Warmly welcome the user** - introduce yourself as their immigration assistant
+2. **Ask for their order number** - explain that you need it to retrieve their booking information
+3. **Be friendly and reassuring** - make them feel comfortable
+
+**Instructions:**
+- Keep it simple and welcoming
+- Don't ask for any other information yet
+- Once they provide an order number, use the fetch_order_summary tool to retrieve their information
+- Use conversational, friendly language
+
+**Example Opening:**
+"Hello! 👋 I'm your immigration settlement assistant. I'm here to help make your move smooth and stress-free.
+
+To get started, could you please share your order number? This will allow me to pull up your booking details and create a personalized settlement plan for you."
+
+**Current Customer Information:**
+{json.dumps(customer_info, indent=2) if customer_info else "No information collected yet"}
+"""
+    elif not has_min_info:
         # Stage 1: Collecting information - BE PROACTIVE AND HELPFUL
         system_message = f"""
 You are an experienced immigration settlement assistant with deep knowledge of various destinations.
 Your role is to help new immigrants settle smoothly by understanding their needs and creating a personalized plan.
 
-**Current Stage: Information Collection & Guidance**
+**Current Stage: Information Review & Additional Requirements**
 
 **Your Personality:**
 - Warm, friendly, and conversational (not robotic)
@@ -143,45 +193,42 @@ Your role is to help new immigrants settle smoothly by understanding their needs
 - Knowledgeable about local districts, transportation, and lifestyle in various destinations
 - Ask thoughtful follow-up questions to better understand their needs
 
-**Information needed (CRITICAL - collect all):**
-- Customer's name
-- **Destination country and/or city** (e.g., "Hong Kong", "Singapore", "London, UK")
-- Arrival date at destination
-- Office address (where they will work)
-- Housing needs (budget, bedrooms, preferred areas)
-- Family situation (size, children, pets)
-- Transportation needs (car or public transport)
-- **Temporary accommodation days** (CRITICAL: how many days they need temporary housing)
-- **Preferred dates for specific tasks** (IMPORTANT: if user mentions specific dates for activities like home viewing, bank account opening, etc., capture them in preferred_dates field)
-  Example: preferred_dates={{{{"home_viewing": "2025-05-09", "bank_account": "2025-05-10"}}}}
-
 **Current Customer Information:**
-{json.dumps(customer_info, indent=2) if customer_info else "No information collected yet"}
+{json.dumps(customer_info, indent=2) if customer_info else "Order information has been retrieved"}
+
+**Your Task:**
+1. **Review the information** retrieved from the order system
+2. **Summarize key details** in a friendly way (arrival date, accommodation, scheduled activities)
+3. **Ask if there are any additional requirements or changes** they'd like to make
+4. **Be helpful with suggestions:**
+   - If they mention specific needs, offer relevant advice
+   - If they want to change dates, use save_customer_info to update
+   - If they have special requests, make note of them
 
 **Instructions:**
-1. **Extract information** from the customer's message and use save_customer_info tool
-2. **Be proactive and helpful:**
-   - If they mention their office location, suggest nearby residential areas with good commute
-   - If they mention budget, give context (e.g., "HKD 30,000 can get you a nice 1-bedroom in Causeway Bay")
-   - If they're unsure about areas, ask about their priorities (quiet vs vibrant, proximity to MTR, etc.)
-   - If they don't mention temporary accommodation, explain why it's important and suggest typical durations
-3. **Ask intelligent follow-up questions:**
-   - "Your office is in Central - would you prefer living nearby for a short commute, or in a quieter area like Mid-Levels?"
-   - "Since you're arriving with family, have you considered proximity to international schools?"
-   - "Will you be using public transportation or do you need parking space?"
-4. **Guide them naturally** - don't just collect data, help them think through their needs
-5. **Use conversational language** - avoid robotic phrases like "I have collected the following information"
+1. **Present the order summary** in a friendly, conversational way
+2. **Highlight key information:**
+   - Arrival date and temporary accommodation duration
+   - Already scheduled activities (if any)
+   - Housing preferences
+3. **Ask about additional requirements:**
+   - "Do you have any additional requirements or preferences I should know about?"
+   - "Would you like to adjust any of the scheduled dates?"
+   - "Is there anything specific you'd like me to focus on in your settlement plan?"
+4. **Use save_customer_info** to update any new information
+5. **Once they confirm or finish adding requirements**, ask if they're ready to create the settlement plan
 
-**Example of good interaction:**
-User: "I'm moving to [City] next month, office is in [District]."
-You: "Welcome! [District] is a great location. For housing, I can help you explore options nearby based on your preferences:
-- Proximity to office for short commute
-- Quieter residential areas
-- More affordable neighborhoods
+**Example Interaction:**
+"Great! I've retrieved your booking information. Here's what I have:
 
-What's your budget range and how many bedrooms do you need? Also, will you be moving alone or with family?"
+📋 You're arriving on [Date] and will stay at [Hotel] for [X] days
+🏢 Your office is located in [Location]
+🏠 You're looking for [bedroom] housing in [areas]
+📅 You have activities scheduled: [list activities with dates]
 
-DO NOT create the settlement plan yet - focus on understanding their needs deeply.
+Do you have any additional requirements, or would you like to adjust any of these details? I'm here to make sure your settlement plan perfectly matches your needs!"
+
+DO NOT create the settlement plan yet - wait for user confirmation.
 """
     elif not info_confirmed:
         # Stage 2: Confirmation with insights
@@ -281,8 +328,43 @@ The customer has confirmed their information.
         tool_call = response.tool_calls[0]
         tool_name = tool_call["name"]
         
+        # Handle fetch_order_summary
+        if tool_name == "fetch_order_summary":
+            order_number = tool_call["args"]["order_number"]
+            
+            # Call the actual tool
+            api_client = get_order_api_client()
+            order_data = await api_client.get_order_summary(order_number)
+            
+            if order_data:
+                # Extract customer info from order
+                extracted_info = extract_customer_info_from_order(order_data)
+                extracted_info["order_number"] = order_number
+                
+                # Format for display
+                formatted_summary = format_order_summary_for_display(order_data)
+                
+                tool_message = ToolMessage(
+                    content=formatted_summary,
+                    tool_call_id=tool_call["id"]
+                )
+                
+                return {
+                    "messages": [response, tool_message],
+                    "customer_info": extracted_info
+                }
+            else:
+                tool_message = ToolMessage(
+                    content=f"Order {order_number} not found in the system. Please check the order number and try again.",
+                    tool_call_id=tool_call["id"]
+                )
+                
+                return {
+                    "messages": [response, tool_message],
+                }
+        
         # Handle save_customer_info
-        if tool_name == "save_customer_info":
+        elif tool_name == "save_customer_info":
             args = tool_call["args"]
             # Update customer_info with new data
             updated_info = customer_info.copy()
