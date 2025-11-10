@@ -8,8 +8,18 @@ import logging
 from typing import Optional, Dict, Any
 import httpx
 from datetime import datetime
+from langchain_openai import AzureChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
+
+# Initialize LLM for AI parsing
+llm = AzureChatOpenAI(
+    azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
+    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
+    temperature=0,  # Use 0 for deterministic extraction
+    max_tokens=1000,
+)
 
 
 class OrderAPIClient:
@@ -187,9 +197,85 @@ class OrderAPIClient:
             return None
 
 
+async def parse_summary_text_with_ai(summary_text: str) -> Dict[str, Any]:
+    """
+    Use AI to parse the summary text and extract structured information
+    
+    Args:
+        summary_text: The raw summary text from API
+        
+    Returns:
+        Structured order data dictionary
+    """
+    system_prompt = """You are an expert at extracting structured information from immigration relocation documents.
+
+Your task is to analyze the provided relocation summary text and extract key information into a structured JSON format.
+
+Extract the following information if available:
+1. arrival_date (format: "4th Dec 2025" or "2025-12-04")
+2. temporary_accommodation_days (integer: number of days)
+3. housing_budget (integer: monthly budget in HKD)
+4. bedrooms (integer: number of bedrooms)
+5. preferred_areas (array of strings: preferred residential areas)
+6. office_address (string: office location)
+7. family_size (integer: number of adults)
+8. has_children (boolean: true if mentioned)
+9. needs_car (boolean: true if car/parking needed)
+10. scheduled_activities (array of objects with "type" and "date"):
+    - type can be: "home_viewing", "bank_account", "identity_card", "school_visit", etc.
+    - date format: "9th Dec 2025" or "2025-12-09"
+
+IMPORTANT RULES:
+1. Only extract information that is explicitly mentioned in the text
+2. If information is not found, omit that field (do NOT use null or empty values)
+3. Convert all numeric values to proper types (integers, not strings)
+4. Return ONLY valid JSON, no additional text or explanation
+5. For dates, preserve the original format from the document
+6. For arrays, only include items that are clearly mentioned
+
+Example output:
+{
+  "arrival_date": "4th Dec 2025",
+  "temporary_accommodation_days": 30,
+  "housing_budget": 65000,
+  "bedrooms": 2,
+  "preferred_areas": ["Wan Chai", "Sheung Wan"],
+  "office_address": "3 Lockhart Road, Wan Chai",
+  "family_size": 1,
+  "scheduled_activities": [
+    {"type": "home_viewing", "date": "9th Dec 2025"},
+    {"type": "bank_account", "date": "10th Dec 2025"}
+  ]
+}"""
+
+    try:
+        logger.info("Using AI to parse order summary text")
+        
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"Extract structured information from this relocation summary:\n\n{summary_text}")
+        ]
+        
+        response = await llm.ainvoke(messages)
+        
+        # Parse the JSON response
+        parsed_data = json.loads(response.content)
+        
+        logger.info(f"Successfully parsed order data with AI: {list(parsed_data.keys())}")
+        return parsed_data
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse AI response as JSON: {e}")
+        logger.error(f"AI response was: {response.content}")
+        return {}
+    except Exception as e:
+        logger.error(f"Error parsing summary with AI: {e}")
+        return {}
+
+
 def parse_summary_text(summary_text: str) -> Dict[str, Any]:
     """
-    Parse the summary text from API and extract structured information
+    Legacy regex-based parser (kept as fallback)
     
     Args:
         summary_text: The raw summary text from API
@@ -259,7 +345,7 @@ def parse_summary_text(summary_text: str) -> Dict[str, Any]:
     return order_data
 
 
-def extract_customer_info_from_order(order_summary: Dict[str, Any]) -> Dict[str, Any]:
+async def extract_customer_info_from_order(order_summary: Dict[str, Any]) -> Dict[str, Any]:
     """
     从订单摘要中提取客户信息，转换为AgentState的customer_info格式
     
@@ -271,12 +357,24 @@ def extract_customer_info_from_order(order_summary: Dict[str, Any]) -> Dict[str,
     """
     customer_info = {}
     
-    # 如果API返回的是summary文本格式，先解析它
+    # 如果API返回的是summary文本格式，使用AI解析它
     if "summary" in order_summary and isinstance(order_summary["summary"], str):
-        logger.info("Parsing summary text from API response")
-        parsed_data = parse_summary_text(order_summary["summary"])
-        # 合并解析的数据到order_summary
-        order_summary = {**order_summary, **parsed_data}
+        logger.info("Parsing summary text from API response using AI")
+        try:
+            # Try AI parsing first
+            parsed_data = await parse_summary_text_with_ai(order_summary["summary"])
+            
+            # If AI parsing returns empty, fall back to regex
+            if not parsed_data:
+                logger.warning("AI parsing returned empty, falling back to regex")
+                parsed_data = parse_summary_text(order_summary["summary"])
+            
+            # 合并解析的数据到order_summary
+            order_summary = {**order_summary, **parsed_data}
+        except Exception as e:
+            logger.error(f"Error in AI parsing, falling back to regex: {e}")
+            parsed_data = parse_summary_text(order_summary["summary"])
+            order_summary = {**order_summary, **parsed_data}
     
     # 基本信息
     if "customer_name" in order_summary:
@@ -337,7 +435,7 @@ def extract_customer_info_from_order(order_summary: Dict[str, Any]) -> Dict[str,
     return customer_info
 
 
-def format_order_summary_for_display(order_summary: Dict[str, Any]) -> str:
+async def format_order_summary_for_display(order_summary: Dict[str, Any]) -> str:
     """
     格式化订单摘要用于显示给用户
     
@@ -347,10 +445,17 @@ def format_order_summary_for_display(order_summary: Dict[str, Any]) -> str:
     Returns:
         格式化的字符串
     """
-    # 如果有summary文本，解析它以获取结构化数据
+    # 如果有summary文本，使用AI解析它以获取结构化数据
     if "summary" in order_summary and isinstance(order_summary["summary"], str):
-        parsed_data = parse_summary_text(order_summary["summary"])
-        order_summary = {**order_summary, **parsed_data}
+        try:
+            parsed_data = await parse_summary_text_with_ai(order_summary["summary"])
+            if not parsed_data:
+                parsed_data = parse_summary_text(order_summary["summary"])
+            order_summary = {**order_summary, **parsed_data}
+        except Exception as e:
+            logger.error(f"Error parsing summary for display: {e}")
+            parsed_data = parse_summary_text(order_summary["summary"])
+            order_summary = {**order_summary, **parsed_data}
     
     lines = []
     
