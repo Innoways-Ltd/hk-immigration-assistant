@@ -337,12 +337,12 @@ The customer has confirmed their information.
             order_data = await api_client.get_order_summary(order_number)
             
             if order_data:
-                # Extract customer info from order
-                extracted_info = extract_customer_info_from_order(order_data)
+                # Extract customer info from order (using AI)
+                extracted_info = await extract_customer_info_from_order(order_data)
                 extracted_info["order_number"] = order_number
                 
-                # Format for display
-                formatted_summary = format_order_summary_for_display(order_data)
+                # Format for display (using AI)
+                formatted_summary = await format_order_summary_for_display(order_data)
                 
                 tool_message = ToolMessage(
                     content=formatted_summary,
