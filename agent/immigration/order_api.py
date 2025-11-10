@@ -5,7 +5,6 @@ Order API Client
 import os
 import json
 import logging
-import re
 from typing import Optional, Dict, Any
 import httpx
 from datetime import datetime
@@ -420,7 +419,7 @@ async def extract_customer_info_from_order(order_summary: Dict[str, Any]) -> Dic
     if temp_accom.get("days"):
         customer_info["temporary_accommodation_days"] = temp_accom["days"]
     
-    # 预定活动日期
+    # 预定活动日期 - Use AI to standardize date formats
     scheduled_activities = order_summary.get("scheduled_activities", [])
     if scheduled_activities:
         preferred_dates = {}
@@ -428,63 +427,93 @@ async def extract_customer_info_from_order(order_summary: Dict[str, Any]) -> Dic
             activity_type = activity.get("type")
             activity_date = activity.get("date")
             if activity_type and activity_date:
-                # Convert date to YYYY-MM-DD format expected by core_tasks_generator
-                standardized_date = _standardize_date_format(activity_date)
+                # Convert date to YYYY-MM-DD format using AI for maximum compatibility
+                standardized_date = await _standardize_date_format(activity_date)
                 if standardized_date:
                     preferred_dates[activity_type] = standardized_date
         
         if preferred_dates:
             customer_info["preferred_dates"] = preferred_dates
     
-    # Standardize arrival_date format as well
+    # Standardize arrival_date format as well using AI
     if "arrival_date" in customer_info:
-        standardized_arrival = _standardize_date_format(customer_info["arrival_date"])
+        standardized_arrival = await _standardize_date_format(customer_info["arrival_date"])
         if standardized_arrival:
             customer_info["arrival_date"] = standardized_arrival
     
     return customer_info
 
 
-def _standardize_date_format(date_str: str) -> Optional[str]:
+async def _standardize_date_format(date_str: str) -> Optional[str]:
     """
-    Convert various date formats to YYYY-MM-DD format
+    Use AI to convert any date format to YYYY-MM-DD format for maximum compatibility.
     
-    Handles:
+    Examples:
     - "4th Dec 2025" -> "2025-12-04"
-    - "9th Dec 2025" -> "2025-12-09"  
+    - "9th Dec 2025" -> "2025-12-09"
+    - "December 4, 2025" -> "2025-12-04"
+    - "12/04/2025" -> "2025-12-04"
     - "2025-12-04" -> "2025-12-04" (already standard)
-    - "Dec 04, 2025" -> "2025-12-04"
     """
-    import re
-    from datetime import datetime
-    
     if not date_str:
         return None
     
-    # Already in YYYY-MM-DD format
-    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
-        return date_str
+    # Quick check: already in YYYY-MM-DD format
+    if len(date_str) == 10 and date_str[4] == '-' and date_str[7] == '-':
+        try:
+            # Validate it's a valid date
+            year, month, day = date_str.split('-')
+            if (year.isdigit() and month.isdigit() and day.isdigit() and 
+                1 <= int(month) <= 12 and 1 <= int(day) <= 31):
+                return date_str
+        except:
+            pass
     
-    # Try parsing "4th Dec 2025", "9th Dec 2025" etc.
-    patterns = [
-        (r'(\d+)(?:st|nd|rd|th)\s+(\w+)\s+(\d{4})', '%d %b %Y'),  # "4th Dec 2025"
-        (r'(\w+)\s+(\d+),?\s+(\d{4})', '%b %d %Y'),  # "Dec 04, 2025" or "Dec 04 2025"
-        (r'(\d{4})/(\d{2})/(\d{2})', '%Y/%m/%d'),  # "2025/12/04"
-    ]
-    
-    for pattern, date_format in patterns:
-        match = re.match(pattern, date_str.strip())
-        if match:
-            try:
-                # Remove ordinal suffixes (st, nd, rd, th) for parsing
-                clean_date_str = re.sub(r'(\d+)(?:st|nd|rd|th)', r'\1', date_str.strip())
-                parsed_date = datetime.strptime(clean_date_str, date_format)
-                return parsed_date.strftime('%Y-%m-%d')
-            except ValueError:
-                continue
-    
-    logger.warning(f"Could not parse date format: {date_str}")
-    return None
+    # Use AI for flexible date parsing
+    system_prompt = """You are a date format standardizer. Convert any date string to YYYY-MM-DD format.
+
+CRITICAL RULES:
+1. Always output ONLY the date in YYYY-MM-DD format
+2. No additional text, explanations, or formatting
+3. Use leading zeros for month and day (e.g., 2025-01-05, not 2025-1-5)
+4. If the date is invalid or cannot be parsed, return "INVALID"
+
+Examples:
+Input: "4th Dec 2025" -> Output: 2025-12-04
+Input: "9th December 2025" -> Output: 2025-12-09
+Input: "December 4, 2025" -> Output: 2025-12-04
+Input: "12/04/2025" -> Output: 2025-12-04
+Input: "2025-12-04" -> Output: 2025-12-04
+Input: "invalid date" -> Output: INVALID"""
+
+    try:
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=f"Convert this date to YYYY-MM-DD format: {date_str}")
+        ]
+        
+        response = await llm.ainvoke(messages)
+        result = response.content.strip()
+        
+        # Validate the result
+        if result == "INVALID":
+            logger.warning(f"AI could not parse date: {date_str}")
+            return None
+        
+        # Validate format YYYY-MM-DD
+        if len(result) == 10 and result[4] == '-' and result[7] == '-':
+            year, month, day = result.split('-')
+            if (year.isdigit() and month.isdigit() and day.isdigit() and 
+                1900 <= int(year) <= 2100 and 1 <= int(month) <= 12 and 1 <= int(day) <= 31):
+                logger.info(f"Successfully standardized date: '{date_str}' -> '{result}'")
+                return result
+        
+        logger.warning(f"AI returned invalid date format: {result} for input: {date_str}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error standardizing date with AI: {e}")
+        return None
 
 
 async def format_order_summary_for_display(order_summary: Dict[str, Any]) -> str:
