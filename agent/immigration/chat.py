@@ -5,6 +5,7 @@ from langchain_core.messages import SystemMessage
 from langchain_openai import AzureChatOpenAI
 from immigration.search import search_service_locations, search_properties
 from immigration.settlement import create_settlement_plan, add_settlement_task, update_settlement_task, complete_settlement_task
+from immigration.order_api import get_order_api_client, extract_customer_info_from_order, format_order_summary_for_display
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import AIMessage, ToolMessage
 from typing import cast
