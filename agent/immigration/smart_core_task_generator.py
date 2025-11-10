@@ -271,6 +271,7 @@ class SmartCoreTaskGenerator:
         
         2. 只为核心任务所在的日期生成活动
         3. 未提到的日期不安排任何活动
+        4. 特殊处理Day 1（到达日）：显著减少扩展活动数量，避免让用户疲惫
         """
         all_extended_tasks = []
         task_counter = 1000
@@ -278,14 +279,52 @@ class SmartCoreTaskGenerator:
         # 跟踪已生成的活动（去重）
         generated_activities: Dict[int, Set[Tuple[str, str]]] = {}  # day -> set of (type, district)
         
+        # 跟踪每天的核心任务数量和扩展活动配额
+        daily_task_counts: Dict[int, int] = {}  # day -> core_task_count
+        daily_extended_quota: Dict[int, int] = {}  # day -> remaining_extended_quota
+        
         # 跟踪已完成的任务类型（用于依赖分析）
         completed_task_types: Set[str] = set()
         
+        # First pass: 计算每天的核心任务数量
+        for core_task in core_tasks:
+            day_num, _ = self.analyzer.analyze_time_window(core_task)
+            daily_task_counts[day_num] = daily_task_counts.get(day_num, 0) + 1
+        
+        # 设置每天的扩展活动配额
+        for day_num, core_count in daily_task_counts.items():
+            if day_num == 1:
+                # Day 1（到达日）特殊处理：
+                # - 如果有2个或更多核心任务（如机场接机+入住），则不添加扩展活动
+                # - 如果只有1个核心任务，最多添加1个扩展活动
+                if core_count >= 2:
+                    daily_extended_quota[day_num] = 0
+                    logger.info(f"Day 1 (Arrival Day) has {core_count} core tasks - no extended activities to avoid fatigue")
+                else:
+                    daily_extended_quota[day_num] = 1
+                    logger.info(f"Day 1 (Arrival Day) - limited to 1 extended activity maximum")
+            else:
+                # 其他日期：每个核心任务最多max_activities_per_task个扩展活动
+                daily_extended_quota[day_num] = core_count * max_activities_per_task
+        
+        # Second pass: 为每个核心任务生成扩展活动
         for core_task in core_tasks:
             # Step 1: 分析时间窗口
             day_num, actual_date = self.analyzer.analyze_time_window(core_task)
             
-            logger.info(f"Processing core task '{core_task.get('title')}' on Day {day_num}")
+            # 检查该天是否还有扩展活动配额
+            remaining_quota = daily_extended_quota.get(day_num, 0)
+            if remaining_quota <= 0:
+                logger.info(
+                    f"Day {day_num} has reached its extended activity quota. "
+                    f"Skipping extended activities for '{core_task.get('title')}'"
+                )
+                continue
+            
+            logger.info(
+                f"Processing core task '{core_task.get('title')}' on Day {day_num} "
+                f"(remaining quota: {remaining_quota})"
+            )
             
             # Step 2: 检查任务依赖
             task_title = core_task.get("title", "")
@@ -350,6 +389,11 @@ class SmartCoreTaskGenerator:
                 
                 added_count = 0
                 for service, score, reason in scored_activities:
+                    # 检查是否达到该天的配额
+                    if daily_extended_quota[day_num] <= 0:
+                        logger.info(f"Day {day_num} quota exhausted, stopping extended activity generation")
+                        break
+                    
                     if added_count >= max_activities_per_task:
                         break
                     
@@ -375,12 +419,13 @@ class SmartCoreTaskGenerator:
                     if extended_task:
                         all_extended_tasks.append(extended_task)
                         generated_activities[day_num].add(activity_key)
+                        daily_extended_quota[day_num] -= 1  # 减少配额
                         task_counter += 1
                         added_count += 1
                         
                         logger.info(
                             f"  → Generated extended activity: {extended_task['title']} "
-                            f"(score: {score:.2f})"
+                            f"(score: {score:.2f}, remaining quota: {daily_extended_quota[day_num]})"
                         )
             
             except Exception as e:
