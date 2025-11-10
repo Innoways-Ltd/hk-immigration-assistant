@@ -18,6 +18,9 @@ def generate_core_tasks(customer_info: CustomerInfo) -> List[SettlementTask]:
     Returns:
         List of core tasks for user-specified dates only
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     tasks = []
     
     # Parse arrival date
@@ -25,23 +28,39 @@ def generate_core_tasks(customer_info: CustomerInfo) -> List[SettlementTask]:
     if customer_info.get("arrival_date"):
         try:
             arrival_date = datetime.strptime(customer_info["arrival_date"], "%Y-%m-%d")
-        except:
+            logger.info(f"Parsed arrival date: {arrival_date}")
+        except Exception as e:
+            logger.error(f"Failed to parse arrival_date: {e}")
             pass
     
     # Get preferred dates from customer info
     preferred_dates = customer_info.get("preferred_dates", {})
+    logger.info(f"Preferred dates from customer_info: {preferred_dates}")
     
     # Only generate tasks if user provided specific dates for activities
     if not preferred_dates and not arrival_date:
+        logger.warning("No preferred_dates or arrival_date found - returning empty task list")
         return tasks  # No dates provided, return empty list
     
     # Day 1: Arrival tasks (only if arrival_date is provided)
     if arrival_date:
-        tasks.extend(_generate_arrival_core_tasks(customer_info, arrival_date))
+        arrival_tasks = _generate_arrival_core_tasks(customer_info, arrival_date)
+        logger.info(f"Generated {len(arrival_tasks)} arrival tasks")
+        tasks.extend(arrival_tasks)
     
     # Housing tasks (only if user specified home_viewing date)
-    if preferred_dates.get("home_viewing") and (customer_info.get("housing_budget") or customer_info.get("bedrooms")):
-        tasks.extend(_generate_housing_core_tasks(customer_info, arrival_date))
+    has_home_viewing = preferred_dates.get("home_viewing")
+    has_housing_info = customer_info.get("housing_budget") or customer_info.get("bedrooms")
+    logger.info(f"Housing check - has_home_viewing: {has_home_viewing}, has_housing_info: {has_housing_info}")
+    
+    if has_home_viewing and has_housing_info:
+        housing_tasks = _generate_housing_core_tasks(customer_info, arrival_date)
+        logger.info(f"Generated {len(housing_tasks)} housing tasks")
+        tasks.extend(housing_tasks)
+    elif has_home_viewing and not has_housing_info:
+        logger.warning("home_viewing date specified but no housing_budget or bedrooms found")
+    elif not has_home_viewing:
+        logger.info("No home_viewing date specified, skipping housing tasks")
     
     # Identity tasks (only if user specified identity_card date)
     if preferred_dates.get("identity_card"):

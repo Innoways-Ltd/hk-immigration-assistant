@@ -392,32 +392,53 @@ async def extract_customer_info_from_order(order_summary: Dict[str, Any]) -> Dic
     if "office_address" in order_summary:
         customer_info["office_address"] = order_summary["office_address"]
     
-    # 住房需求
+    # 住房需求 - Support both nested and flat structures
     housing_req = order_summary.get("housing_requirements", {})
     if housing_req.get("budget"):
         customer_info["housing_budget"] = housing_req["budget"]
+    elif order_summary.get("housing_budget"):
+        # Flat structure from AI parsing
+        customer_info["housing_budget"] = order_summary["housing_budget"]
     
     if housing_req.get("bedrooms"):
         customer_info["bedrooms"] = housing_req["bedrooms"]
+    elif order_summary.get("bedrooms"):
+        # Flat structure from AI parsing
+        customer_info["bedrooms"] = order_summary["bedrooms"]
     
     if housing_req.get("preferred_areas"):
         customer_info["preferred_areas"] = housing_req["preferred_areas"]
+    elif order_summary.get("preferred_areas"):
+        # Flat structure from AI parsing
+        customer_info["preferred_areas"] = order_summary["preferred_areas"]
     
-    # 家庭信息
+    # 家庭信息 - Support both nested and flat structures
     family_info = order_summary.get("family_info", {})
     if family_info.get("family_size"):
         customer_info["family_size"] = family_info["family_size"]
+    elif order_summary.get("family_size"):
+        # Flat structure from AI parsing
+        customer_info["family_size"] = order_summary["family_size"]
     
     if "has_children" in family_info:
         customer_info["has_children"] = family_info["has_children"]
+    elif "has_children" in order_summary:
+        # Flat structure from AI parsing
+        customer_info["has_children"] = order_summary["has_children"]
     
     if "needs_car" in family_info:
         customer_info["needs_car"] = family_info["needs_car"]
+    elif "needs_car" in order_summary:
+        # Flat structure from AI parsing
+        customer_info["needs_car"] = order_summary["needs_car"]
     
-    # 临时住宿
+    # 临时住宿 - Support both nested and flat structures
     temp_accom = order_summary.get("temporary_accommodation", {})
     if temp_accom.get("days"):
         customer_info["temporary_accommodation_days"] = temp_accom["days"]
+    elif order_summary.get("temporary_accommodation_days"):
+        # Flat structure from AI parsing
+        customer_info["temporary_accommodation_days"] = order_summary["temporary_accommodation_days"]
     
     # 预定活动日期 - Use AI to standardize date formats
     scheduled_activities = order_summary.get("scheduled_activities", [])
