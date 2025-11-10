@@ -187,17 +187,96 @@ class OrderAPIClient:
             return None
 
 
+def parse_summary_text(summary_text: str) -> Dict[str, Any]:
+    """
+    Parse the summary text from API and extract structured information
+    
+    Args:
+        summary_text: The raw summary text from API
+        
+    Returns:
+        Structured order data dictionary
+    """
+    import re
+    
+    order_data = {}
+    
+    # Extract arrival date
+    arrival_match = re.search(r'Arrival Date.*?:?\s*(\d+(?:st|nd|rd|th)?\s+\w+\s+\d{4})', summary_text, re.IGNORECASE)
+    if arrival_match:
+        order_data["arrival_date"] = arrival_match.group(1)
+    
+    # Extract temporary accommodation days
+    temp_accom_match = re.search(r'Temporary accommodation:\s*(\d+)\s*days?', summary_text, re.IGNORECASE)
+    if temp_accom_match:
+        order_data["temporary_accommodation_days"] = int(temp_accom_match.group(1))
+    
+    # Extract budget
+    budget_match = re.search(r'Budget:\s*HKD?\s*([0-9,]+)', summary_text, re.IGNORECASE)
+    if budget_match:
+        order_data["housing_budget"] = int(budget_match.group(1).replace(',', ''))
+    
+    # Extract bedrooms
+    bedroom_match = re.search(r'(\d+)\s*bedroom', summary_text, re.IGNORECASE)
+    if bedroom_match:
+        order_data["bedrooms"] = int(bedroom_match.group(1))
+    
+    # Extract preferred areas
+    areas_match = re.search(r'Property areas?:\s*([^\n]+)', summary_text, re.IGNORECASE)
+    if areas_match:
+        areas_text = areas_match.group(1)
+        order_data["preferred_areas"] = [area.strip() for area in re.split(r',|;', areas_text) if area.strip()]
+    
+    # Extract office location
+    office_match = re.search(r'Office Location:\s*([^\n]+)', summary_text, re.IGNORECASE)
+    if office_match:
+        order_data["office_address"] = office_match.group(1).strip()
+    
+    # Extract family size
+    family_match = re.search(r'Family Size:\s*(\d+)\s*adult', summary_text, re.IGNORECASE)
+    if family_match:
+        order_data["family_size"] = int(family_match.group(1))
+    
+    # Extract scheduled dates for activities
+    home_viewing_match = re.search(r'Home viewing.*?(\d+(?:st|nd|rd|th)?\s+\w+\s+\d{4})', summary_text, re.IGNORECASE)
+    if home_viewing_match:
+        if "scheduled_activities" not in order_data:
+            order_data["scheduled_activities"] = []
+        order_data["scheduled_activities"].append({
+            "type": "home_viewing",
+            "date": home_viewing_match.group(1)
+        })
+    
+    bank_match = re.search(r'Bank account.*?(\d+(?:st|nd|rd|th)?\s+\w+\s+\d{4})', summary_text, re.IGNORECASE)
+    if bank_match:
+        if "scheduled_activities" not in order_data:
+            order_data["scheduled_activities"] = []
+        order_data["scheduled_activities"].append({
+            "type": "bank_account",
+            "date": bank_match.group(1)
+        })
+    
+    return order_data
+
+
 def extract_customer_info_from_order(order_summary: Dict[str, Any]) -> Dict[str, Any]:
     """
     从订单摘要中提取客户信息，转换为AgentState的customer_info格式
     
     Args:
-        order_summary: 订单摘要数据
+        order_summary: 订单摘要数据（可能包含summary文本字段或结构化数据）
         
     Returns:
         customer_info格式的字典
     """
     customer_info = {}
+    
+    # 如果API返回的是summary文本格式，先解析它
+    if "summary" in order_summary and isinstance(order_summary["summary"], str):
+        logger.info("Parsing summary text from API response")
+        parsed_data = parse_summary_text(order_summary["summary"])
+        # 合并解析的数据到order_summary
+        order_summary = {**order_summary, **parsed_data}
     
     # 基本信息
     if "customer_name" in order_summary:
@@ -263,79 +342,53 @@ def format_order_summary_for_display(order_summary: Dict[str, Any]) -> str:
     格式化订单摘要用于显示给用户
     
     Args:
-        order_summary: 订单摘要数据
+        order_summary: 订单摘要数据（可能包含summary文本字段）
         
     Returns:
         格式化的字符串
     """
+    # 如果有summary文本，解析它以获取结构化数据
+    if "summary" in order_summary and isinstance(order_summary["summary"], str):
+        parsed_data = parse_summary_text(order_summary["summary"])
+        order_summary = {**order_summary, **parsed_data}
+    
     lines = []
     
-    lines.append(f"📋 **订单号：** {order_summary.get('order_number', 'N/A')}")
-    lines.append(f"👤 **姓名：** {order_summary.get('customer_name', 'N/A')}")
-    lines.append(f"📍 **目的地：** {order_summary.get('destination_city', 'N/A')}, {order_summary.get('destination_country', 'N/A')}")
-    lines.append(f"✈️ **到达日期：** {order_summary.get('arrival_date', 'N/A')}")
+    lines.append(f"📋 **Order Information Retrieved Successfully**")
     
-    # 航班信息
-    if order_summary.get("arrival_flight"):
-        lines.append(f"🛫 **航班：** {order_summary['arrival_flight']}")
+    if order_summary.get('arrival_date'):
+        lines.append(f"✈️ **Arrival Date:** {order_summary['arrival_date']}")
     
-    # 办公地址
-    if order_summary.get("office_address"):
-        lines.append(f"🏢 **办公地址：** {order_summary['office_address']}")
+    if order_summary.get('office_address'):
+        lines.append(f"🏢 **Office Location:** {order_summary['office_address']}")
     
     # 临时住宿
-    temp_accom = order_summary.get("temporary_accommodation", {})
-    if temp_accom:
-        lines.append(f"\n🏨 **临时住宿：**")
-        lines.append(f"   - 酒店：{temp_accom.get('hotel_name', 'N/A')}")
-        lines.append(f"   - 入住：{temp_accom.get('check_in_date', 'N/A')}")
-        lines.append(f"   - 退房：{temp_accom.get('check_out_date', 'N/A')}")
-        lines.append(f"   - 天数：{temp_accom.get('days', 'N/A')} 天")
+    if order_summary.get("temporary_accommodation_days"):
+        lines.append(f"🏨 **Temporary Accommodation:** {order_summary['temporary_accommodation_days']} days")
     
     # 住房需求
-    housing_req = order_summary.get("housing_requirements", {})
-    if housing_req:
-        lines.append(f"\n🏠 **住房需求：**")
-        if housing_req.get("budget"):
-            lines.append(f"   - 预算：HKD {housing_req['budget']:,}/月")
-        if housing_req.get("bedrooms"):
-            lines.append(f"   - 卧室：{housing_req['bedrooms']} 间")
-        if housing_req.get("preferred_areas"):
-            areas = ", ".join(housing_req["preferred_areas"])
-            lines.append(f"   - 偏好区域：{areas}")
+    if order_summary.get("housing_budget"):
+        lines.append(f"\n🏠 **Housing Requirements:**")
+        lines.append(f"   - Budget: HKD {order_summary['housing_budget']:,}/month")
+    
+    if order_summary.get("bedrooms"):
+        lines.append(f"   - Bedrooms: {order_summary['bedrooms']}")
+    
+    if order_summary.get("preferred_areas"):
+        areas = ", ".join(order_summary["preferred_areas"])
+        lines.append(f"   - Preferred Areas: {areas}")
     
     # 家庭信息
-    family_info = order_summary.get("family_info", {})
-    if family_info:
-        lines.append(f"\n👨‍👩‍👧‍👦 **家庭信息：**")
-        if family_info.get("family_size"):
-            lines.append(f"   - 家庭人数：{family_info['family_size']} 人")
-        if family_info.get("has_children"):
-            if family_info.get("children_ages"):
-                ages = ", ".join(map(str, family_info["children_ages"]))
-                lines.append(f"   - 子女年龄：{ages} 岁")
-            else:
-                lines.append(f"   - 有子女")
-        if family_info.get("needs_car"):
-            lines.append(f"   - 需要汽车：是")
+    if order_summary.get("family_size"):
+        lines.append(f"\n👨‍👩‍👧‍👦 **Family Size:** {order_summary['family_size']} adult(s)")
     
     # 已安排的活动
     scheduled_activities = order_summary.get("scheduled_activities", [])
     if scheduled_activities:
-        lines.append(f"\n📅 **已安排活动：**")
+        lines.append(f"\n📅 **Scheduled Activities:**")
         for activity in scheduled_activities:
-            lines.append(f"   - {activity.get('date', 'N/A')}: {activity.get('description', 'N/A')}")
-    
-    # 特殊要求
-    special_req = order_summary.get("special_requirements", [])
-    if special_req:
-        lines.append(f"\n⭐ **特殊要求：**")
-        for req in special_req:
-            lines.append(f"   - {req}")
-    
-    # 备注
-    if order_summary.get("notes"):
-        lines.append(f"\n📝 **备注：** {order_summary['notes']}")
+            activity_type = activity.get('type', '').replace('_', ' ').title()
+            lines.append(f"   - {activity.get('date', 'TBD')}: {activity_type}")
     
     return "\n".join(lines)
 
