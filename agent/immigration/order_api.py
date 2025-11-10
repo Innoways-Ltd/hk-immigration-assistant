@@ -5,6 +5,7 @@ Order API Client
 import os
 import json
 import logging
+import re
 from typing import Optional, Dict, Any
 import httpx
 from datetime import datetime
@@ -427,12 +428,63 @@ async def extract_customer_info_from_order(order_summary: Dict[str, Any]) -> Dic
             activity_type = activity.get("type")
             activity_date = activity.get("date")
             if activity_type and activity_date:
-                preferred_dates[activity_type] = activity_date
+                # Convert date to YYYY-MM-DD format expected by core_tasks_generator
+                standardized_date = _standardize_date_format(activity_date)
+                if standardized_date:
+                    preferred_dates[activity_type] = standardized_date
         
         if preferred_dates:
             customer_info["preferred_dates"] = preferred_dates
     
+    # Standardize arrival_date format as well
+    if "arrival_date" in customer_info:
+        standardized_arrival = _standardize_date_format(customer_info["arrival_date"])
+        if standardized_arrival:
+            customer_info["arrival_date"] = standardized_arrival
+    
     return customer_info
+
+
+def _standardize_date_format(date_str: str) -> Optional[str]:
+    """
+    Convert various date formats to YYYY-MM-DD format
+    
+    Handles:
+    - "4th Dec 2025" -> "2025-12-04"
+    - "9th Dec 2025" -> "2025-12-09"  
+    - "2025-12-04" -> "2025-12-04" (already standard)
+    - "Dec 04, 2025" -> "2025-12-04"
+    """
+    import re
+    from datetime import datetime
+    
+    if not date_str:
+        return None
+    
+    # Already in YYYY-MM-DD format
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        return date_str
+    
+    # Try parsing "4th Dec 2025", "9th Dec 2025" etc.
+    patterns = [
+        (r'(\d+)(?:st|nd|rd|th)\s+(\w+)\s+(\d{4})', '%d %b %Y'),  # "4th Dec 2025"
+        (r'(\w+)\s+(\d+),?\s+(\d{4})', '%b %d %Y'),  # "Dec 04, 2025" or "Dec 04 2025"
+        (r'(\d{4})/(\d{2})/(\d{2})', '%Y/%m/%d'),  # "2025/12/04"
+    ]
+    
+    for pattern, date_format in patterns:
+        match = re.match(pattern, date_str.strip())
+        if match:
+            try:
+                # Remove ordinal suffixes (st, nd, rd, th) for parsing
+                clean_date_str = re.sub(r'(\d+)(?:st|nd|rd|th)', r'\1', date_str.strip())
+                parsed_date = datetime.strptime(clean_date_str, date_format)
+                return parsed_date.strftime('%Y-%m-%d')
+            except ValueError:
+                continue
+    
+    logger.warning(f"Could not parse date format: {date_str}")
+    return None
 
 
 async def format_order_summary_for_display(order_summary: Dict[str, Any]) -> str:
