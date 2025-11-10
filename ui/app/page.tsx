@@ -78,7 +78,7 @@ export default function Home() {
         labels={{
           title: "Immigration Settlement Assistant",
           initial:
-            "Hi! 👋 I'm your immigration settlement assistant. I'll help you create a personalized settlement plan tailored to your destination and timeline.\n\nPlease share your details in one message (or we can chat step by step):\n- Your name\n- Destination country/city\n- Arrival date\n- Office address\n- Housing needs (budget, bedrooms, preferred areas)\n- Family situation\n- Temporary accommodation needs (how many days)\n\nOnce you provide your information, I'll create a detailed settlement plan with specific tasks, locations, and timelines!",
+            "Hello! 👋 I'm your immigration settlement assistant. I'm here to help make your move smooth and stress-free.\n\nTo get started, could you please share your order number? This will allow me to pull up your booking details and create a personalized settlement plan for you.\n\nIf you don't have an order number yet, that's okay! We can collect your information step by step.",
         }}
       >
         <MainContent />
