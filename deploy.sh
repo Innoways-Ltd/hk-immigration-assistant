@@ -48,6 +48,34 @@ check_prerequisites() {
     print_info "All prerequisites met ✓"
 }
 
+pull_latest_code() {
+    print_info "Pulling latest code from repository..."
+    
+    # Check if we're in a git repository
+    if [ ! -d .git ]; then
+        print_warning "Not a git repository, skipping code pull"
+        return 0
+    fi
+    
+    # Check if git is available
+    if ! command -v git &> /dev/null; then
+        print_warning "Git is not installed, skipping code pull"
+        return 0
+    fi
+    
+    # Get current branch
+    current_branch=$(git branch --show-current 2>/dev/null || echo "master")
+    print_info "Current branch: $current_branch"
+    
+    # Pull latest code
+    if git pull origin "$current_branch" 2>&1; then
+        print_info "Latest code pulled successfully ✓"
+    else
+        print_error "Failed to pull latest code"
+        print_warning "Continuing with current code..."
+    fi
+}
+
 check_env_variables() {
     print_info "Checking environment variables..."
     
@@ -198,6 +226,7 @@ main() {
     echo ""
     
     check_prerequisites
+    pull_latest_code
     check_env_variables
     build_images
     start_services
