@@ -49,17 +49,20 @@ def generate_core_tasks(customer_info: CustomerInfo) -> List[SettlementTask]:
         tasks.extend(arrival_tasks)
     
     # Housing tasks (only if user specified home_viewing date)
+    # RELAXED VALIDATION: Generate housing tasks if home_viewing date is specified,
+    # even without explicit budget/bedrooms (AI extraction may have provided defaults)
     has_home_viewing = preferred_dates.get("home_viewing")
     has_housing_info = customer_info.get("housing_budget") or customer_info.get("bedrooms")
     logger.info(f"Housing check - has_home_viewing: {has_home_viewing}, has_housing_info: {has_housing_info}")
     
-    if has_home_viewing and has_housing_info:
+    if has_home_viewing:
         housing_tasks = _generate_housing_core_tasks(customer_info, arrival_date)
-        logger.info(f"Generated {len(housing_tasks)} housing tasks")
+        logger.info(f"Generated {len(housing_tasks)} housing tasks (home_viewing date: {has_home_viewing})")
         tasks.extend(housing_tasks)
-    elif has_home_viewing and not has_housing_info:
-        logger.warning("home_viewing date specified but no housing_budget or bedrooms found")
-    elif not has_home_viewing:
+        
+        if not has_housing_info:
+            logger.info("Housing tasks created with defaults (no explicit budget/bedrooms provided)")
+    else:
         logger.info("No home_viewing date specified, skipping housing tasks")
     
     # Identity tasks (only if user specified identity_card date)
