@@ -1,5 +1,7 @@
 """
 AI-powered extraction of housing details from free-form conversation text.
+This module uses Azure OpenAI to intelligently extract housing requirements
+from user messages when explicit parameters are not provided.
 """
 import os
 import logging
@@ -9,7 +11,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
 
-# Initialize LLM with deterministic settings for extraction
+# Initialize LLM for extraction (low temperature for deterministic results)
 llm = AzureChatOpenAI(
     azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"),
     api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
@@ -17,119 +19,118 @@ llm = AzureChatOpenAI(
     max_tokens=500,
 )
 
+
 async def extract_housing_details_from_text(
     conversation_text: str,
     office_address: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Extract housing requirements from free-form conversation text using AI.
-    
-    This function is called when user mentions housing needs without explicit budget/bedrooms.
-    It uses AI to infer reasonable defaults based on context.
+    Use AI to extract housing details from free-form conversation text.
     
     Args:
-        conversation_text: Raw text from user conversation
-            Example: "我12月15日去找房子希望离办公室近一点"
-        office_address: Office address for context (if available)
+        conversation_text: Raw text from user (e.g., "我12月15日去找房子希望离办公室近一点")
+        office_address: Office address if available (helps with area suggestions)
     
     Returns:
         Dictionary with extracted housing details:
         {
-            "housing_budget": int (monthly budget) or None,
+            "housing_budget": int or None,
             "bedrooms": int or None,
-            "preferred_areas": list of area names or None
+            "preferred_areas": list or None,
+            "notes": str  # Any additional context extracted
         }
-    """
     
-    system_prompt = """You are a housing requirements extraction specialist.
+    Examples:
+        Input: "我12月15日去找房子希望离办公室近一点"
+        Output: {"housing_budget": None, "bedrooms": 1, "preferred_areas": ["Near office"], "notes": "User wants proximity to office"}
+        
+        Input: "找一个两室一厅，预算3万左右，最好在市中心"
+        Output: {"housing_budget": 30000, "bedrooms": 2, "preferred_areas": ["City Center"], "notes": "User wants 2-bedroom apartment"}
+    """
+    logger.info(f"Extracting housing details from text: {conversation_text}")
+    
+    system_prompt = """You are a housing requirements extraction assistant. Extract housing details from user messages.
 
-Your task is to analyze user conversation text and extract housing requirements.
-If explicit details are not mentioned, infer REASONABLE DEFAULTS based on context.
+**CRITICAL RULES:**
+1. Output ONLY valid JSON with these fields: housing_budget (int or null), bedrooms (int or null), preferred_areas (list or null), notes (string)
+2. If a field cannot be determined from the text, set it to null
+3. Use reasonable defaults when appropriate:
+   - If user mentions "找房子" (find house) without details, default to 1 bedroom
+   - If user mentions "近办公室" (near office) without specific areas, use ["Near office"]
+   - Budget should only be set if explicitly mentioned (numbers like "3万", "30000", "HKD 30000")
+4. Be intelligent about Chinese text:
+   - "两室" = 2 bedrooms, "一室" = 1 bedroom, "三室" = 3 bedrooms
+   - "市中心" = City Center, "郊区" = Suburbs, "海边" = Waterfront
+   - Budget amounts: "3万" = 30000, "五万" = 50000
+5. Notes field should capture user's intent and preferences in English
 
-EXTRACTION RULES:
-1. **housing_budget**: Monthly housing budget in local currency
-   - If not mentioned, return null (we'll use system defaults later)
-   - Common indicators: "预算", "budget", "租金", "rent", price mentions
-   
-2. **bedrooms**: Number of bedrooms needed
-   - If not mentioned but user mentions "找房子" or "home_viewing", assume 2 bedrooms as reasonable default
-   - Single person: 1 bedroom
-   - Family/couple: 2-3 bedrooms
-   
-3. **preferred_areas**: List of preferred areas/districts
-   - If user mentions "离办公室近" (close to office), extract this as preference
-   - Include any specific area names mentioned
-   - If office address is provided, include "near_office" as a preference
-
-OUTPUT FORMAT (JSON):
-{
-  "housing_budget": <number or null>,
-  "bedrooms": <number or null>,
-  "preferred_areas": [<list of strings or null>]
-}
-
-IMPORTANT:
-- Output ONLY valid JSON, no additional text
-- Use null for missing values
-- Be conservative with assumptions
-- When user says "找房子" without details, assume they need at least 1-2 bedrooms
-
-EXAMPLES:
+**Examples:**
 
 Input: "我12月15日去找房子希望离办公室近一点"
-Context: office_address = "鸿隆世纪广场"
-Output: {"housing_budget": null, "bedrooms": 2, "preferred_areas": ["near_office"]}
+Output: {"housing_budget": null, "bedrooms": 1, "preferred_areas": ["Near office"], "notes": "User wants to find housing close to office"}
 
-Input: "需要租一个两室的房子，预算15000"
-Context: office_address = null
-Output: {"housing_budget": 15000, "bedrooms": 2, "preferred_areas": null}
+Input: "找一个两室一厅，预算3万左右，最好在市中心"
+Output: {"housing_budget": 30000, "bedrooms": 2, "preferred_areas": ["City Center"], "notes": "User wants 2-bedroom apartment in city center with budget around HKD 30000"}
 
-Input: "找个一居室，最好在市中心"
-Context: office_address = null
-Output: {"housing_budget": null, "bedrooms": 1, "preferred_areas": ["市中心"]}
+Input: "我想租房子"
+Output: {"housing_budget": null, "bedrooms": 1, "preferred_areas": null, "notes": "User wants to rent housing, no specific requirements mentioned"}
 
-Input: "I need a place to live close to my office"
-Context: office_address = "Central Plaza"
-Output: {"housing_budget": null, "bedrooms": 1, "preferred_areas": ["near_office"]}
-"""
+Input: "need a place with 3 bedrooms, budget is HKD 50000 per month, prefer Wan Chai or Central"
+Output: {"housing_budget": 50000, "bedrooms": 3, "preferred_areas": ["Wan Chai", "Central"], "notes": "User needs 3-bedroom apartment in Wan Chai or Central area with budget HKD 50000"}
 
-    user_message = f"""Conversation text: "{conversation_text}"
-Office address: {office_address if office_address else "Not provided"}
-
-Extract housing requirements from the conversation text."""
-
+**IMPORTANT:** Output ONLY the JSON object, no additional text or formatting."""
+    
+    context_info = ""
+    if office_address:
+        context_info = f"\n\n**Additional Context:**\nUser's office address: {office_address}\n(Use this to infer preferred areas if user mentions 'near office')"
+    
     try:
         messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_message)
+            SystemMessage(content=system_prompt + context_info),
+            HumanMessage(content=f"Extract housing details from this text:\n{conversation_text}")
         ]
         
-        logger.info(f"Extracting housing details from text: {conversation_text}")
         response = await llm.ainvoke(messages)
         result_text = response.content.strip()
         
         # Parse JSON response
         import json
-        housing_details = json.loads(result_text)
-        
-        # Validate and clean the response
-        cleaned_details = {}
-        
-        if housing_details.get("housing_budget") and isinstance(housing_details["housing_budget"], (int, float)):
-            cleaned_details["housing_budget"] = int(housing_details["housing_budget"])
-        
-        if housing_details.get("bedrooms") and isinstance(housing_details["bedrooms"], (int, float)):
-            cleaned_details["bedrooms"] = int(housing_details["bedrooms"])
-        
-        if housing_details.get("preferred_areas") and isinstance(housing_details["preferred_areas"], list):
-            cleaned_details["preferred_areas"] = [str(area) for area in housing_details["preferred_areas"]]
-        
-        logger.info(f"Successfully extracted housing details: {cleaned_details}")
-        return cleaned_details
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse AI response as JSON: {result_text}. Error: {e}")
-        return {}
+        try:
+            # Remove markdown code blocks if present
+            if result_text.startswith("```"):
+                result_text = result_text.split("```")[1]
+                if result_text.startswith("json"):
+                    result_text = result_text[4:]
+                result_text = result_text.strip()
+            
+            housing_details = json.loads(result_text)
+            
+            # Validate structure
+            required_keys = {"housing_budget", "bedrooms", "preferred_areas", "notes"}
+            if not all(key in housing_details for key in required_keys):
+                logger.error(f"AI returned incomplete JSON: {housing_details}")
+                return _default_housing_details()
+            
+            logger.info(f"Successfully extracted housing details: {housing_details}")
+            return housing_details
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse AI response as JSON: {e}\nResponse: {result_text}")
+            return _default_housing_details()
+            
     except Exception as e:
         logger.error(f"Error extracting housing details with AI: {e}")
-        return {}
+        return _default_housing_details()
+
+
+def _default_housing_details() -> Dict[str, Any]:
+    """
+    Return default housing details when extraction fails.
+    These defaults allow task generation to proceed.
+    """
+    return {
+        "housing_budget": None,
+        "bedrooms": 1,  # Default to 1 bedroom
+        "preferred_areas": None,
+        "notes": "Default values used due to extraction failure"
+    }

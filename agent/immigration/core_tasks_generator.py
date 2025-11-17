@@ -39,29 +39,22 @@ def generate_core_tasks(customer_info: CustomerInfo) -> List[SettlementTask]:
     
     # Only generate tasks if user provided specific dates for activities
     if not preferred_dates and not arrival_date:
-        logger.warning("No preferred_dates or arrival_date found - returning empty task list")
         return tasks  # No dates provided, return empty list
     
     # Day 1: Arrival tasks (only if arrival_date is provided)
     if arrival_date:
-        arrival_tasks = _generate_arrival_core_tasks(customer_info, arrival_date)
-        logger.info(f"Generated {len(arrival_tasks)} arrival tasks")
-        tasks.extend(arrival_tasks)
+        tasks.extend(_generate_arrival_core_tasks(customer_info, arrival_date))
     
     # Housing tasks (only if user specified home_viewing date)
     # RELAXED VALIDATION: Generate housing tasks if home_viewing date is specified,
-    # even without explicit budget/bedrooms (AI extraction may have provided defaults)
+    # even without explicit budget/bedrooms (AI extraction provides defaults)
     has_home_viewing = preferred_dates.get("home_viewing")
-    has_housing_info = customer_info.get("housing_budget") or customer_info.get("bedrooms")
-    logger.info(f"Housing check - has_home_viewing: {has_home_viewing}, has_housing_info: {has_housing_info}")
+    logger.info(f"Housing check - has_home_viewing: {has_home_viewing}")
     
     if has_home_viewing:
         housing_tasks = _generate_housing_core_tasks(customer_info, arrival_date)
         logger.info(f"Generated {len(housing_tasks)} housing tasks (home_viewing date: {has_home_viewing})")
         tasks.extend(housing_tasks)
-        
-        if not has_housing_info:
-            logger.info("Housing tasks created with defaults (no explicit budget/bedrooms provided)")
     else:
         logger.info("No home_viewing date specified, skipping housing tasks")
     
@@ -193,10 +186,23 @@ def _generate_housing_core_tasks(
     except:
         return tasks  # Invalid date format, skip this task
     
-    budget = customer_info.get("housing_budget", 0)
-    bedrooms = customer_info.get("bedrooms", 1)
-    preferred_areas = customer_info.get("preferred_areas", [])
-    areas_str = ", ".join(preferred_areas) if preferred_areas else "near office"
+    # Use defaults if not explicitly provided (AI extraction may have set these)
+    budget = customer_info.get("housing_budget") or 0
+    bedrooms = customer_info.get("bedrooms") or 1
+    preferred_areas = customer_info.get("preferred_areas") or []
+    
+    # Build description string
+    if budget > 0:
+        budget_str = f"budget: HKD {budget:,}/month"
+    else:
+        budget_str = "budget: TBD"
+    
+    if preferred_areas:
+        areas_str = ", ".join(preferred_areas)
+    elif customer_info.get("office_address"):
+        areas_str = "near office"
+    else:
+        areas_str = "TBD"
     
     # Determine property viewing location based on user's preferred areas
     viewing_area = preferred_areas[0] if preferred_areas else "Wan Chai"
@@ -215,10 +221,14 @@ def _generate_housing_core_tasks(
     # Get coordinates for the viewing area (default to Wan Chai if not found)
     viewing_lat, viewing_lng = area_coords.get(viewing_area, (22.2783, 114.1747))
     
+    # Build task description
+    bedroom_str = f"{bedrooms} bedroom" if bedrooms == 1 else f"{bedrooms} bedrooms"
+    task_description = f"View shortlisted properties in {areas_str} ({bedroom_str}, {budget_str})"
+    
     tasks.append({
         "id": str(uuid.uuid4()),
         "title": "Property Viewing - First Batch",
-        "description": f"View shortlisted properties in {areas_str} ({bedrooms} bedroom, budget: HKD {budget:,}/month)",
+        "description": task_description,
         "day_range": day_str,
         "priority": "high",
         "task_type": TaskType.CORE.value,
