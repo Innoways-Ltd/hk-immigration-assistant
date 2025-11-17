@@ -11,7 +11,7 @@ from typing import cast
 from langchain_core.tools import tool
 
 @tool
-def save_customer_info(
+async def save_customer_info(
     name: str = None,
     destination_country: str = None,
     destination_city: str = None,
@@ -24,7 +24,8 @@ def save_customer_info(
     has_children: bool = False,
     needs_car: bool = False,
     temporary_accommodation_days: int = None,
-    preferred_dates: dict = None
+    preferred_dates: dict = None,
+    raw_conversation_text: str = None
 ):
     """
     Save customer information collected from the conversation.
@@ -35,6 +36,9 @@ def save_customer_info(
             Keys should be task types (e.g., "home_viewing", "bank_account", "identity_card").
             Values should be dates in YYYY-MM-DD format.
             Example: {"home_viewing": "2025-05-09", "bank_account": "2025-05-10"}
+        raw_conversation_text: Optional raw text from user conversation for AI extraction of implicit details.
+            When user mentions housing needs without explicit budget/bedrooms, pass the raw text here.
+            Example: "我12月15日去找房子希望离办公室近一点"
     """
     return "Customer information saved"
 
@@ -160,17 +164,24 @@ Your role is to help new immigrants settle smoothly by understanding their needs
 
 **Instructions:**
 1. **Extract information** from the customer's message and use save_customer_info tool
-2. **Be proactive and helpful:**
+2. **When calling save_customer_info:**
+   - **CRITICAL**: If user mentions housing needs (finding house, apartment, accommodation) in their message, 
+     ALWAYS include the `raw_conversation_text` parameter with the user's exact message text
+   - This enables AI extraction of implicit housing requirements
+   - Example: User says "我12月15日去找房子希望离办公室近一点"
+     → Call save_customer_info with raw_conversation_text="我12月15日去找房子希望离办公室近一点"
+   - The system will automatically extract housing details from the text
+3. **Be proactive and helpful:**
    - If they mention their office location, suggest nearby residential areas with good commute
    - If they mention budget, give context (e.g., "HKD 30,000 can get you a nice 1-bedroom in Causeway Bay")
    - If they're unsure about areas, ask about their priorities (quiet vs vibrant, proximity to MTR, etc.)
    - If they don't mention temporary accommodation, explain why it's important and suggest typical durations
-3. **Ask intelligent follow-up questions:**
+4. **Ask intelligent follow-up questions:**
    - "Your office is in Central - would you prefer living nearby for a short commute, or in a quieter area like Mid-Levels?"
    - "Since you're arriving with family, have you considered proximity to international schools?"
    - "Will you be using public transportation or do you need parking space?"
-4. **Guide them naturally** - don't just collect data, help them think through their needs
-5. **Use conversational language** - avoid robotic phrases like "I have collected the following information"
+5. **Guide them naturally** - don't just collect data, help them think through their needs
+6. **Use conversational language** - avoid robotic phrases like "I have collected the following information"
 
 **Example of good interaction:**
 User: "I'm moving to [City] next month, office is in [District]."
@@ -286,9 +297,32 @@ The customer has confirmed their information.
             args = tool_call["args"]
             # Update customer_info with new data
             updated_info = customer_info.copy()
+            
+            # Extract raw conversation text if provided
+            raw_text = args.pop("raw_conversation_text", None)
+            
+            # First, apply explicit parameters
             for key, value in args.items():
                 if value is not None:
                     updated_info[key] = value
+            
+            # If raw text is provided and housing viewing date exists, use AI to extract housing details
+            if raw_text and updated_info.get("preferred_dates", {}).get("home_viewing"):
+                from immigration.ai_extractor import extract_housing_details_from_text
+                housing_details = await extract_housing_details_from_text(
+                    raw_text, 
+                    updated_info.get("office_address")
+                )
+                
+                # Only update if not already explicitly provided
+                if housing_details.get("housing_budget") and not updated_info.get("housing_budget"):
+                    updated_info["housing_budget"] = housing_details["housing_budget"]
+                
+                if housing_details.get("bedrooms") and not updated_info.get("bedrooms"):
+                    updated_info["bedrooms"] = housing_details["bedrooms"]
+                
+                if housing_details.get("preferred_areas") and not updated_info.get("preferred_areas"):
+                    updated_info["preferred_areas"] = housing_details["preferred_areas"]
             
             tool_message = ToolMessage(
                 content="Customer information saved successfully",

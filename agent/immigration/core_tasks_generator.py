@@ -18,6 +18,9 @@ def generate_core_tasks(customer_info: CustomerInfo) -> List[SettlementTask]:
     Returns:
         List of core tasks for user-specified dates only
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     tasks = []
     
     # Parse arrival date
@@ -25,11 +28,14 @@ def generate_core_tasks(customer_info: CustomerInfo) -> List[SettlementTask]:
     if customer_info.get("arrival_date"):
         try:
             arrival_date = datetime.strptime(customer_info["arrival_date"], "%Y-%m-%d")
-        except:
+            logger.info(f"Parsed arrival date: {arrival_date}")
+        except Exception as e:
+            logger.error(f"Failed to parse arrival_date: {e}")
             pass
     
     # Get preferred dates from customer info
     preferred_dates = customer_info.get("preferred_dates", {})
+    logger.info(f"Preferred dates from customer_info: {preferred_dates}")
     
     # Only generate tasks if user provided specific dates for activities
     if not preferred_dates and not arrival_date:
@@ -40,8 +46,17 @@ def generate_core_tasks(customer_info: CustomerInfo) -> List[SettlementTask]:
         tasks.extend(_generate_arrival_core_tasks(customer_info, arrival_date))
     
     # Housing tasks (only if user specified home_viewing date)
-    if preferred_dates.get("home_viewing") and (customer_info.get("housing_budget") or customer_info.get("bedrooms")):
-        tasks.extend(_generate_housing_core_tasks(customer_info, arrival_date))
+    # RELAXED VALIDATION: Generate housing tasks if home_viewing date is specified,
+    # even without explicit budget/bedrooms (AI extraction provides defaults)
+    has_home_viewing = preferred_dates.get("home_viewing")
+    logger.info(f"Housing check - has_home_viewing: {has_home_viewing}")
+    
+    if has_home_viewing:
+        housing_tasks = _generate_housing_core_tasks(customer_info, arrival_date)
+        logger.info(f"Generated {len(housing_tasks)} housing tasks (home_viewing date: {has_home_viewing})")
+        tasks.extend(housing_tasks)
+    else:
+        logger.info("No home_viewing date specified, skipping housing tasks")
     
     # Identity tasks (only if user specified identity_card date)
     if preferred_dates.get("identity_card"):
@@ -171,10 +186,23 @@ def _generate_housing_core_tasks(
     except:
         return tasks  # Invalid date format, skip this task
     
-    budget = customer_info.get("housing_budget", 0)
-    bedrooms = customer_info.get("bedrooms", 1)
-    preferred_areas = customer_info.get("preferred_areas", [])
-    areas_str = ", ".join(preferred_areas) if preferred_areas else "near office"
+    # Use defaults if not explicitly provided (AI extraction may have set these)
+    budget = customer_info.get("housing_budget") or 0
+    bedrooms = customer_info.get("bedrooms") or 1
+    preferred_areas = customer_info.get("preferred_areas") or []
+    
+    # Build description string
+    if budget > 0:
+        budget_str = f"budget: HKD {budget:,}/month"
+    else:
+        budget_str = "budget: TBD"
+    
+    if preferred_areas:
+        areas_str = ", ".join(preferred_areas)
+    elif customer_info.get("office_address"):
+        areas_str = "near office"
+    else:
+        areas_str = "TBD"
     
     # Determine property viewing location based on user's preferred areas
     viewing_area = preferred_areas[0] if preferred_areas else "Wan Chai"
@@ -193,10 +221,14 @@ def _generate_housing_core_tasks(
     # Get coordinates for the viewing area (default to Wan Chai if not found)
     viewing_lat, viewing_lng = area_coords.get(viewing_area, (22.2783, 114.1747))
     
+    # Build task description
+    bedroom_str = f"{bedrooms} bedroom" if bedrooms == 1 else f"{bedrooms} bedrooms"
+    task_description = f"View shortlisted properties in {areas_str} ({bedroom_str}, {budget_str})"
+    
     tasks.append({
         "id": str(uuid.uuid4()),
         "title": "Property Viewing - First Batch",
-        "description": f"View shortlisted properties in {areas_str} ({bedrooms} bedroom, budget: HKD {budget:,}/month)",
+        "description": task_description,
         "day_range": day_str,
         "priority": "high",
         "task_type": TaskType.CORE.value,
